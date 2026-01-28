@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Produktivitas</title>
+    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -286,11 +286,25 @@
         function App() {
             const [data, setData] = useState([]);
             const [hourlyData, setHourlyData] = useState([]);
+
             const [activeTab, setActiveTab] = useState("INBOUND");
             const [filterHub, setFilterHub] = useState("All");
-            const [startDate, setStartDate] = useState("");
-            const [endDate, setEndDate] = useState("");
+
+            // --- SET DEFAULT DATE RANGE (30 DAYS) ---
+            // Mengambil tanggal hari ini dan 30 hari ke belakang
+            const today = new Date();
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(today.getDate() - 30);
+            
+            // Format YYYY-MM-DD untuk input type="date"
+            const formatDateInput = (date) => date.toISOString().split('T')[0];
+
+            const [startDate, setStartDate] = useState(formatDateInput(thirtyDaysAgo));
+            const [endDate, setEndDate] = useState(formatDateInput(today));
+            
             const [searchTerm, setSearchTerm] = useState("");
+            
+            // Notification State
             const [notifyState, setNotifyState] = useState({ status: 'idle', message: '', visible: false });
             const [user, setUser] = useState(null);
             
