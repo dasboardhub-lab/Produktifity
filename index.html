@@ -123,6 +123,20 @@
             </div>
         );
 
+        // --- StatCard Component (Added Back) ---
+        const StatCard = ({ title, value, sub, icon: IconComp, colorClass }) => (
+            <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-center gap-4">
+                <div className={`p-3 rounded-lg ${colorClass}`}>
+                    <IconComp size={24} />
+                </div>
+                <div>
+                    <p className="text-slate-500 text-sm font-medium">{title}</p>
+                    <h4 className="text-xl font-bold text-slate-800">{value}</h4>
+                    {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+                </div>
+            </div>
+        );
+
         // --- Helpers ---
         const cleanNumber = (val) => {
             if (typeof val === 'number') return val;
