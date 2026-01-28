@@ -142,7 +142,7 @@
             </div>
         );
 
-        // --- DYNAMIC ISLAND ---
+        // --- DYNAMIC ISLAND NOTIFICATION COMPONENT ---
         const DynamicIsland = ({ status, message, isVisible }) => {
             const getStyles = () => {
                 switch(status) {
@@ -220,7 +220,6 @@
             return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`); 
         };
 
-        // IMPROVED CSV PARSER
         const parseCSV = (text) => {
             const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) return [];
@@ -234,7 +233,6 @@
             
             for (let i = 1; i < lines.length; i++) {
                 const currentLine = lines[i];
-                // Handle quotes if using comma separator
                 let values = [];
                 if (separator === ',' && currentLine.includes('"')) {
                     const regex = /(?:^|,)(\"(?:[^\"]+|\"\")*\"|[^,]*)/g;
@@ -256,13 +254,11 @@
                     obj[header] = val;
                 });
                 
-                // Allow pushing if ANY key data is present
                 if (Object.keys(obj).length > 0) result.push(obj);
             }
             return result;
         };
 
-        // --- CONSTANTS ---
         const CATEGORIES = [
             { id: 'INBOUND', label: 'Inbound', color: 'blue', icon: Icons.ArrowDown },
             { id: 'OUTBOUND', label: 'Outbound', color: 'green', icon: Icons.ArrowUp },
@@ -291,12 +287,10 @@
             const [filterHub, setFilterHub] = useState("All");
 
             // --- SET DEFAULT DATE RANGE (30 DAYS) ---
-            // Mengambil tanggal hari ini dan 30 hari ke belakang
             const today = new Date();
             const thirtyDaysAgo = new Date();
             thirtyDaysAgo.setDate(today.getDate() - 30);
             
-            // Format YYYY-MM-DD untuk input type="date"
             const formatDateInput = (date) => date.toISOString().split('T')[0];
 
             const [startDate, setStartDate] = useState(formatDateInput(thirtyDaysAgo));
@@ -350,7 +344,7 @@
                 return () => { unsubscribe(); unsubscribeHourly(); };
             }, [user]);
 
-            // 3. Upload Daily
+            // 3. Upload Daily - UNIQUE ID: TANGGAL + NIK + JAM MASUK
             const handleFileUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
@@ -366,10 +360,17 @@
                         for (const chunk of chunks) {
                             const batch = window.writeBatch(window.db);
                             chunk.forEach(row => {
-                                if (!row.TANGGAL && !row.NIK) return; // Basic validation
-                                const dateKey = row.TANGGAL ? row.TANGGAL.replace(/\//g, '-') : 'NODATE';
+                                if (!row.TANGGAL || !row.NIK) return; 
+                                const dateKey = row.TANGGAL.replace(/\//g, '-');
                                 const nikKey = row.NIK || 'NONIK';
-                                const docId = `${dateKey}_${nikKey}`;
+                                // Find Jam Masuk column (case insensitive search)
+                                const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
+                                let jamMasuk = row[jamMasukKey] || '00:00';
+                                // Sanitize jam (remove colons/spaces)
+                                const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
+                                
+                                // ID: TANGGAL_NIK_JAMMASUK
+                                const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
                                 const docRef = window.doc(colRef, docId);
                                 batch.set(docRef, row);
                             });
@@ -382,7 +383,7 @@
                 reader.readAsText(file);
             };
 
-            // 4. Upload Hourly - IMPROVED KEY DETECTION
+            // 4. Upload Hourly - UNIQUE ID: TANGGAL + NIK + TIME (JAM)
             const handleHourlyUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
@@ -395,7 +396,6 @@
                         return; 
                     }
 
-                    // Flexible Key Finder
                     const findKey = (row, keywords) => {
                         return Object.keys(row).find(key => 
                             keywords.some(k => key.toLowerCase().includes(k))
@@ -413,28 +413,33 @@
                         for (const chunk of chunks) {
                             const batch = window.writeBatch(window.db);
                             chunk.forEach(row => {
-                                // Smart Search for keys
                                 const jamKey = findKey(row, ['jam', 'hour', 'time', 'waktu', 'pukul']);
                                 const loadKey = findKey(row, ['load', 'total', 'qty', 'volume', 'parcel', 'paket']);
                                 const dateKey = findKey(row, ['tanggal', 'date', 'tgl']);
+                                // Try to find NIK key in hourly data
+                                const nikKeyFound = findKey(row, ['nik', 'id', 'user']);
 
                                 const jam = row[jamKey] || row.JAM;
                                 const loadRaw = row[loadKey] || row.LOAD;
                                 const tanggal = row[dateKey] || row.TANGGAL || 'GENERAL';
+                                const nik = row[nikKeyFound] || row.NIK || 'GENERAL';
 
                                 if (jam && loadRaw !== undefined) {
                                     const safeDate = String(tanggal).replace(/\//g, '-');
                                     const safeJam = String(jam).replace(/:/g, '');
-                                    const docId = `${safeDate}_${safeJam}`;
+                                    const safeNik = String(nik).trim();
+                                    
+                                    // ID: TANGGAL_NIK_TIME
+                                    const docId = `${safeDate}_${safeNik}_${safeJam}`;
                                     const docRef = window.doc(colRef, docId);
                                     
                                     const finalLoad = cleanNumber(loadRaw);
                                     
-                                    // Save simplified object
                                     const saveData = {
                                         JAM: jam,
                                         LOAD: finalLoad,
-                                        TANGGAL: tanggal
+                                        TANGGAL: tanggal,
+                                        NIK: nik // Save NIK to DB even if 'GENERAL'
                                     };
 
                                     batch.set(docRef, saveData);
@@ -448,7 +453,7 @@
                             showNotification('error', "Gagal membaca kolom JAM/LOAD. Cek format CSV.");
                         } else {
                             showNotification('success', `Berhasil! ${validRows} data tersimpan.`);
-                            setActiveTab('HOURLY'); // Auto switch tab
+                            setActiveTab('HOURLY'); 
                         }
                     } catch (err) { 
                         console.error(err);
@@ -463,25 +468,24 @@
                 if (!confirm("Hapus semua data?")) return;
                 showNotification('loading', 'Menghapus...', false);
                 try {
-                    // (Simplification: In a real app we'd query to delete, but here assuming key patterns)
-                    // Since we can't delete collection directly in client SDK easily without cloud functions
-                    // We will loop through local state data to find IDs to delete
                     const batch = window.writeBatch(window.db);
                     let count = 0;
-                    
-                    // Limit batch size for deletes too (max 500)
-                    // For demo simplicity, just delete loaded data
                     data.forEach(row => {
                          const dateKey = row.TANGGAL ? row.TANGGAL.replace(/\//g, '-') : 'NODATE';
                          const nikKey = row.NIK || 'NONIK';
-                         const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', `${dateKey}_${nikKey}`);
+                         const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
+                         let jamMasuk = row[jamMasukKey] || '00:00';
+                         const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
+                         const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', `${dateKey}_${nikKey}_${safeJamMasuk}`);
                          batch.delete(docRef);
                          count++;
                     });
+                    // Fallback delete using old ID format if needed, but best effort here
                     hourlyData.forEach(row => {
                          const safeDate = String(row.TANGGAL||'GENERAL').replace(/\//g, '-');
                          const safeJam = String(row.JAM).replace(/:/g, '');
-                         const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', `${safeDate}_${safeJam}`);
+                         const safeNik = String(row.NIK||'GENERAL').trim();
+                         const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', `${safeDate}_${safeNik}_${safeJam}`);
                          batch.delete(docRef);
                          count++;
                     });
@@ -625,9 +629,9 @@
                 return {
                     wh: getMetricTotal(`WH ${activeTab}`),
                     load: getMetricTotal(`LOAD ${activeTab}`),
-                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`), // Produktivitas tetap Average (biasanya) atau mau Total? Biasanya Avg.
+                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`),
                     prdAttend: getMetricAvg(`PRD ${activeTab} BY ATTENDANCE`),
-                    scoring: getMetricTotal(scoringKey) // Mengubah ini menjadi Total sesuai permintaan
+                    scoring: getMetricTotal(scoringKey) 
                 };
             }, [filteredData, activeTab]);
 
@@ -649,7 +653,6 @@
                 }).map(g => ({ ...g, avgPrd: g.count ? Math.round(g.prd / g.count) : 0 }));
             }, [filteredData, activeTab]);
 
-            // Mengubah perhitungan Total Scoring Utama dari Avg ke Total
             const totalScoringSum = getMetricTotal("TOTAL SCORING");
 
             if (!window.Recharts) return <div className="p-10 text-center">Loading Library...</div>;
@@ -659,7 +662,6 @@
                     <DynamicIsland status={notifyState.status} message={notifyState.message} isVisible={notifyState.visible} />
                     
                     <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
-                        {/* ... existing header code ... */}
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="flex items-center gap-3">
@@ -688,7 +690,6 @@
                     </header>
 
                     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-                        {/* ... existing empty state ... */}
                         {data.length === 0 && hourlyData.length === 0 && (
                             <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl">
                                 <div className="p-4 bg-white rounded-full shadow-sm mb-4"><Icons.Database size={48} className="text-slate-400" /></div>
@@ -697,7 +698,6 @@
                             </div>
                         )}
 
-                        {/* ... existing controls ... */}
                         {(data.length > 0 || hourlyData.length > 0) && (
                             <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                 <div className="flex gap-4">
@@ -724,7 +724,6 @@
                             </div>
                         )}
 
-                        {/* --- TOTAL SCORE CARD (UPDATED) --- */}
                         {data.length > 0 && activeTab !== 'ANALYSIS' && activeTab !== 'HOURLY' && (
                             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                 <Card className="p-6 bg-gradient-to-br from-indigo-600 to-blue-700 text-white md:col-span-1">
@@ -735,7 +734,6 @@
                                 <div className="md:col-span-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
                                     {CATEGORIES.filter(c => !c.isSpecial).map(cat => {
                                         const key = cat.id === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${cat.id}`;
-                                        // Mengubah Average menjadi Total
                                         const score = getMetricTotal(key);
                                         const IconComp = cat.icon || Icons.Box;
                                         return (
@@ -750,7 +748,6 @@
                             </div>
                         )}
 
-                        {/* ... existing content ... */}
                         {(data.length > 0 || hourlyData.length > 0) && (
                             <div className="border-b border-slate-200 overflow-x-auto">
                                 <nav className="flex space-x-1 min-w-max">
@@ -766,7 +763,6 @@
                             </div>
                         )}
 
-                        {/* ... existing Analysis & Hourly tabs ... */}
                         {activeTab === 'HOURLY' && hourlyStats ? (
                             <div className="space-y-8">
                                 <Card className="p-6">
@@ -898,7 +894,6 @@
                             </div>
                         ) : null}
 
-                        {/* --- NORMAL DETAIL VIEW (Existing) --- */}
                         {activeTab !== 'HOURLY' && activeTab !== 'ANALYSIS' && data.length > 0 && (
                             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                                 <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
