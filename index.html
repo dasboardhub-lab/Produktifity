@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas</title>
+    <title>Produktivitas</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -611,9 +611,9 @@
                 return {
                     wh: getMetricTotal(`WH ${activeTab}`),
                     load: getMetricTotal(`LOAD ${activeTab}`),
-                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`),
+                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`), // Produktivitas tetap Average (biasanya) atau mau Total? Biasanya Avg.
                     prdAttend: getMetricAvg(`PRD ${activeTab} BY ATTENDANCE`),
-                    scoring: getMetricAvg(scoringKey)
+                    scoring: getMetricTotal(scoringKey) // Mengubah ini menjadi Total sesuai permintaan
                 };
             }, [filteredData, activeTab]);
 
@@ -635,7 +635,8 @@
                 }).map(g => ({ ...g, avgPrd: g.count ? Math.round(g.prd / g.count) : 0 }));
             }, [filteredData, activeTab]);
 
-            const totalScoringAvg = getMetricAvg("TOTAL SCORING");
+            // Mengubah perhitungan Total Scoring Utama dari Avg ke Total
+            const totalScoringSum = getMetricTotal("TOTAL SCORING");
 
             if (!window.Recharts) return <div className="p-10 text-center">Loading Library...</div>;
 
@@ -644,6 +645,7 @@
                     <DynamicIsland status={notifyState.status} message={notifyState.message} isVisible={notifyState.visible} />
                     
                     <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
+                        {/* ... existing header code ... */}
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                 <div className="flex items-center gap-3">
@@ -672,6 +674,7 @@
                     </header>
 
                     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+                        {/* ... existing empty state ... */}
                         {data.length === 0 && hourlyData.length === 0 && (
                             <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl">
                                 <div className="p-4 bg-white rounded-full shadow-sm mb-4"><Icons.Database size={48} className="text-slate-400" /></div>
@@ -680,6 +683,7 @@
                             </div>
                         )}
 
+                        {/* ... existing controls ... */}
                         {(data.length > 0 || hourlyData.length > 0) && (
                             <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                 <div className="flex gap-4">
@@ -706,6 +710,33 @@
                             </div>
                         )}
 
+                        {/* --- TOTAL SCORE CARD (UPDATED) --- */}
+                        {data.length > 0 && activeTab !== 'ANALYSIS' && activeTab !== 'HOURLY' && (
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <Card className="p-6 bg-gradient-to-br from-indigo-600 to-blue-700 text-white md:col-span-1">
+                                    <p className="text-indigo-100 font-medium mb-1">Total Scoring (Sum)</p>
+                                    <h2 className="text-4xl font-bold">{totalScoringSum.toLocaleString()}</h2>
+                                    <p className="text-sm text-indigo-200 mt-2">Data Source: Firestore</p>
+                                </Card>
+                                <div className="md:col-span-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                                    {CATEGORIES.filter(c => !c.isSpecial).map(cat => {
+                                        const key = cat.id === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${cat.id}`;
+                                        // Mengubah Average menjadi Total
+                                        const score = getMetricTotal(key);
+                                        const IconComp = cat.icon || Icons.Box;
+                                        return (
+                                            <div key={cat.id} className="bg-white border border-slate-200 rounded-lg p-3 text-center flex flex-col items-center justify-center gap-1">
+                                                <div className={`p-1.5 rounded-full ${score > 0 ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-50 text-slate-300'}`}><IconComp size={16} /></div>
+                                                <p className="text-xs text-slate-500 font-semibold">{cat.label}</p>
+                                                <p className={`text-lg font-bold ${score > 0 ? 'text-slate-800' : 'text-slate-300'}`}>{score.toLocaleString()}</p>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* ... existing content ... */}
                         {(data.length > 0 || hourlyData.length > 0) && (
                             <div className="border-b border-slate-200 overflow-x-auto">
                                 <nav className="flex space-x-1 min-w-max">
@@ -721,6 +752,7 @@
                             </div>
                         )}
 
+                        {/* ... existing Analysis & Hourly tabs ... */}
                         {activeTab === 'HOURLY' && hourlyStats ? (
                             <div className="space-y-8">
                                 <Card className="p-6">
@@ -753,11 +785,14 @@
                                                 {hourlyStats.dates.map(date => (
                                                     <tr key={date} className="hover:bg-slate-50">
                                                         <td className="p-3 border text-left font-medium sticky left-0 bg-white z-10">{date}</td>
-                                                        {hourlyStats.hours.map(h => (
-                                                            <td key={`${date}-${h}`} className="p-3 border text-slate-600">
-                                                                {(hourlyStats.pivotMap[date][h] || 0) > 0 ? (hourlyStats.pivotMap[date][h] || 0).toLocaleString() : '-'}
-                                                            </td>
-                                                        ))}
+                                                        {hourlyStats.hours.map(h => {
+                                                            const val = hourlyStats.pivotMap[date][h];
+                                                            return (
+                                                                <td key={`${date}-${h}`} className="p-3 border text-slate-600">
+                                                                    {(val || 0) > 0 ? (val || 0).toLocaleString() : '-'}
+                                                                </td>
+                                                            );
+                                                        })}
                                                     </tr>
                                                 ))}
                                             </tbody>
@@ -796,49 +831,6 @@
                                 </div>
                             </div>
                         ) : null}
-
-                        {activeTab !== 'HOURLY' && activeTab !== 'ANALYSIS' && data.length > 0 && (
-                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                                <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                    <StatCard title={`WH ${activeTab}`} value={(currentStats.wh || 0).toLocaleString()} sub="Total Jam Kerja" icon={Icons.Clock} colorClass="bg-blue-50 text-blue-600" />
-                                    <StatCard title={`LOAD ${activeTab}`} value={(currentStats.load || 0).toLocaleString()} sub="Total Paket" icon={Icons.Box} colorClass="bg-green-50 text-green-600" />
-                                    <StatCard title={`PRD ${activeTab} BY WH`} value={currentStats.prdWh} sub="Avg Produktivitas / Jam" icon={Icons.Zap} colorClass="bg-orange-50 text-orange-600" />
-                                    <StatCard title={`PRD ${activeTab} ATTEND`} value={currentStats.prdAttend} sub="Avg Produktivitas / Hari" icon={Icons.Award} colorClass="bg-purple-50 text-purple-600" />
-                                </div>
-                                <Card className="lg:col-span-4 p-6">
-                                    <div className="flex items-center justify-between mb-6">
-                                        <h3 className="font-bold text-slate-800">Tren Harian: {activeTab}</h3>
-                                        <div className="flex items-center gap-4 text-sm"><div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-full"></div> Productivity</div><div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-400 rounded-full"></div> Load Volume</div></div>
-                                    </div>
-                                    <div className="h-[300px]">
-                                        <ResponsiveContainer width="100%" height="100%">
-                                            <ComposedChart data={chartData}>
-                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                                <XAxis dataKey="date" style={{fontSize: '12px'}} stroke="#94a3b8" />
-                                                <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
-                                                <YAxis yAxisId="right" orientation="right" stroke="#4ade80" />
-                                                <Tooltip contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
-                                                <Area yAxisId="right" type="monotone" dataKey="load" fill="#dcfce7" stroke="#4ade80" strokeWidth={2} />
-                                                <Line yAxisId="left" type="monotone" dataKey="avgPrd" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#3b82f6', strokeWidth:2, stroke:'#fff'}} />
-                                            </ComposedChart>
-                                        </ResponsiveContainer>
-                                    </div>
-                                </Card>
-                                <Card className="lg:col-span-4 overflow-hidden">
-                                    <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center"><h3 className="font-bold text-slate-800">Data Detail: {activeTab}</h3><span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">Showing {filteredData.length} rows</span></div>
-                                    <div className="overflow-x-auto max-h-[500px]">
-                                        <table className="w-full text-left text-sm whitespace-nowrap">
-                                            <thead className="bg-slate-50 text-slate-600 font-semibold sticky top-0 z-10 shadow-sm"><tr><th className="px-6 py-3">Tanggal</th><th className="px-6 py-3">NIK</th><th className="px-6 py-3">Nama</th><th className="px-6 py-3 text-center bg-indigo-50/50 text-indigo-700">SCORING</th><th className="px-6 py-3 text-right">WH</th><th className="px-6 py-3 text-right">LOAD</th><th className="px-6 py-3 text-right">PRD / WH</th><th className="px-6 py-3 text-right">PRD / ATTEND</th></tr></thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {filteredData.length > 0 ? filteredData.map((row, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50"><td className="px-6 py-3 text-slate-500">{row.TANGGAL}</td><td className="px-6 py-3 font-mono text-xs">{row.NIK}</td><td className="px-6 py-3 font-medium text-slate-800">{row.NAME}</td><td className="px-6 py-3 text-center font-bold text-indigo-600 bg-indigo-50/20">{row[activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`] || '-'}</td><td className="px-6 py-3 text-right">{row[`WH ${activeTab}`] || 0}</td><td className="px-6 py-3 text-right font-medium">{(parseInt(cleanNumber(row[`LOAD ${activeTab}`])) || 0).toLocaleString()}</td><td className="px-6 py-3 text-right text-green-600 font-medium">{(parseInt(cleanNumber(row[`PRD ${activeTab} BY WH`])) || 0).toLocaleString()}</td><td className="px-6 py-3 text-right text-blue-600 font-medium">{(parseInt(cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`])) || 0).toLocaleString()}</td></tr>
-                                                )) : (<tr><td colSpan="8" className="p-8 text-center text-slate-400">Data tidak ditemukan</td></tr>)}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </Card>
-                            </div>
-                        )}
 
                         {activeTab === 'ANALYSIS' && analysisStats ? (
                             <div className="space-y-6">
@@ -891,6 +883,50 @@
                                 </div>
                             </div>
                         ) : null}
+
+                        {/* --- NORMAL DETAIL VIEW (Existing) --- */}
+                        {activeTab !== 'HOURLY' && activeTab !== 'ANALYSIS' && data.length > 0 && (
+                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                                <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <StatCard title={`WH ${activeTab}`} value={(currentStats.wh || 0).toLocaleString()} sub="Total Jam Kerja" icon={Icons.Clock} colorClass="bg-blue-50 text-blue-600" />
+                                    <StatCard title={`LOAD ${activeTab}`} value={(currentStats.load || 0).toLocaleString()} sub="Total Paket" icon={Icons.Box} colorClass="bg-green-50 text-green-600" />
+                                    <StatCard title={`PRD ${activeTab} BY WH`} value={currentStats.prdWh} sub="Avg Produktivitas / Jam" icon={Icons.Zap} colorClass="bg-orange-50 text-orange-600" />
+                                    <StatCard title={`PRD ${activeTab} ATTEND`} value={currentStats.prdAttend} sub="Avg Produktivitas / Hari" icon={Icons.Award} colorClass="bg-purple-50 text-purple-600" />
+                                </div>
+                                <Card className="lg:col-span-4 p-6">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h3 className="font-bold text-slate-800">Tren Harian: {activeTab}</h3>
+                                        <div className="flex items-center gap-4 text-sm"><div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-full"></div> Productivity</div><div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-400 rounded-full"></div> Load Volume</div></div>
+                                    </div>
+                                    <div className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <ComposedChart data={chartData}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                <XAxis dataKey="date" style={{fontSize: '12px'}} stroke="#94a3b8" />
+                                                <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
+                                                <YAxis yAxisId="right" orientation="right" stroke="#4ade80" />
+                                                <Tooltip contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                                                <Area yAxisId="right" type="monotone" dataKey="load" fill="#dcfce7" stroke="#4ade80" strokeWidth={2} />
+                                                <Line yAxisId="left" type="monotone" dataKey="avgPrd" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#3b82f6', strokeWidth:2, stroke:'#fff'}} />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </Card>
+                                <Card className="lg:col-span-4 overflow-hidden">
+                                    <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center"><h3 className="font-bold text-slate-800">Data Detail: {activeTab}</h3><span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">Showing {filteredData.length} rows</span></div>
+                                    <div className="overflow-x-auto max-h-[500px]">
+                                        <table className="w-full text-left text-sm whitespace-nowrap">
+                                            <thead className="bg-slate-50 text-slate-600 font-semibold sticky top-0 z-10 shadow-sm"><tr><th className="px-6 py-3">Tanggal</th><th className="px-6 py-3">NIK</th><th className="px-6 py-3">Nama</th><th className="px-6 py-3 text-center bg-indigo-50/50 text-indigo-700">SCORING</th><th className="px-6 py-3 text-right">WH</th><th className="px-6 py-3 text-right">LOAD</th><th className="px-6 py-3 text-right">PRD / WH</th><th className="px-6 py-3 text-right">PRD / ATTEND</th></tr></thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filteredData.length > 0 ? filteredData.map((row, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50"><td className="px-6 py-3 text-slate-500">{row.TANGGAL}</td><td className="px-6 py-3 font-mono text-xs">{row.NIK}</td><td className="px-6 py-3 font-medium text-slate-800">{row.NAME}</td><td className="px-6 py-3 text-center font-bold text-indigo-600 bg-indigo-50/20">{row[activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`] || '-'}</td><td className="px-6 py-3 text-right">{row[`WH ${activeTab}`] || 0}</td><td className="px-6 py-3 text-right font-medium">{(parseInt(cleanNumber(row[`LOAD ${activeTab}`])) || 0).toLocaleString()}</td><td className="px-6 py-3 text-right text-green-600 font-medium">{(parseInt(cleanNumber(row[`PRD ${activeTab} BY WH`])) || 0).toLocaleString()}</td><td className="px-6 py-3 text-right text-blue-600 font-medium">{(parseInt(cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`])) || 0).toLocaleString()}</td></tr>
+                                                )) : (<tr><td colSpan="8" className="p-8 text-center text-slate-400">Data tidak ditemukan</td></tr>)}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Card>
+                            </div>
+                        )}
                     </main>
                 </div>
             );
