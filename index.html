@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
+    <title>Dashboard Produktivitas</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -121,6 +121,7 @@
             Calendar: (props) => <Icon {...props} path={<><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></>} />,
             CheckCircle: (props) => <Icon {...props} path={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></>} />,
             XCircle: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></>} />,
+            AlertTriangle: (props) => <Icon {...props} path={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></>} />,
         };
 
         const Card = ({ children, className = "" }) => (
@@ -141,6 +142,41 @@
                 </div>
             </div>
         );
+
+        // --- CUSTOM CONFIRMATION MODAL ---
+        const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, isProcessing }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm transition-opacity">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                        <div className="p-6 text-center">
+                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+                                <Icons.AlertTriangle className="h-6 w-6 text-red-600" />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900 mb-2">{title}</h3>
+                            <p className="text-sm text-slate-500 mb-6">{message}</p>
+                            <div className="flex gap-3 justify-center">
+                                <button
+                                    onClick={onClose}
+                                    disabled={isProcessing}
+                                    className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition focus:outline-none focus:ring-2 focus:ring-slate-200"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    onClick={onConfirm}
+                                    disabled={isProcessing}
+                                    className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-medium hover:bg-red-700 transition shadow-lg shadow-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 flex items-center gap-2"
+                                >
+                                    {isProcessing ? <div className="loader border-white/30 border-t-white w-4 h-4"></div> : null}
+                                    {isProcessing ? 'Menghapus...' : 'Ya, Hapus'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
 
         // --- DYNAMIC ISLAND NOTIFICATION COMPONENT ---
         const DynamicIsland = ({ status, message, isVisible }) => {
@@ -298,6 +334,7 @@
             
             // --- NEW: DELETE MONTH STATE ---
             const [deleteMonth, setDeleteMonth] = useState("");
+            const [showConfirmModal, setShowConfirmModal] = useState(false);
 
             const [searchTerm, setSearchTerm] = useState("");
             
@@ -336,14 +373,15 @@
                 initAuth();
             }, []);
 
-            // 2. Listeners
+            // 2. Listeners - Updated to fetch document IDs
             useEffect(() => {
                 if (!user || !window.db) return;
                 
                 const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs');
                 const unsubscribe = window.onSnapshot(colRef, (snapshot) => {
                     const loadedData = [];
-                    snapshot.forEach(doc => loadedData.push(doc.data()));
+                    // PENTING: Simpan ID dokumen (__docId) agar bisa dihapus nanti
+                    snapshot.forEach(doc => loadedData.push({ ...doc.data(), __docId: doc.id }));
                     setData(loadedData);
                     if (loadedData.length > 0) setSyncStatus("success");
                 });
@@ -351,7 +389,9 @@
                 const colHourlyRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs');
                 const unsubscribeHourly = window.onSnapshot(colHourlyRef, (snapshot) => {
                     const loadedHourly = [];
-                    snapshot.forEach(doc => loadedHourly.push(doc.data()));
+                    // PENTING: Simpan ID dokumen (__docId) agar bisa dihapus nanti
+                    snapshot.forEach(doc => loadedHourly.push({ ...doc.data(), __docId: doc.id }));
+                    loadedHourly.sort((a,b) => (a.JAM || '').localeCompare(b.JAM || ''));
                     setHourlyData(loadedHourly);
                 });
 
@@ -487,16 +527,17 @@
                 reader.readAsText(file);
             };
 
-            // 5. Delete Data By Month
-            const handleDeleteData = async () => {
+            // 5. Delete Data By Month (Trigger)
+            const handleDeleteClick = () => {
                 if (!deleteMonth) {
                     showNotification('error', "Silakan pilih Bulan & Tahun terlebih dahulu.");
                     return;
                 }
+                setShowConfirmModal(true);
+            };
 
-                if (!confirm(`⚠️ PERINGATAN: Apakah Anda yakin ingin MENGHAPUS SEMUA DATA untuk bulan ${deleteMonth}? Tindakan ini tidak dapat dibatalkan.`)) return;
-                
-                showNotification('loading', `Menghapus data bulan ${deleteMonth}...`, false);
+            // 6. Execute Delete (FIXED: Using actual __docId)
+            const executeDelete = async () => {
                 setIsResetting(true);
                 
                 try {
@@ -505,26 +546,21 @@
                     let currentBatchCount = 0;
                     let batches = [window.writeBatch(window.db)];
 
-                    // Helper to check if row date matches selected YYYY-MM
+                    // Improved date checking (handles 1/12 vs 01/12)
                     const isTargetMonth = (dateStr) => {
                         if (!dateStr) return false;
                         const parts = dateStr.split('/');
                         if (parts.length !== 3) return false;
-                        const rowMonth = `${parts[2]}-${parts[1]}`; // YYYY-MM
-                        return rowMonth === deleteMonth;
+                        let year = parts[2];
+                        let month = parts[1];
+                        if (month.length === 1) month = '0' + month; // Pad month
+                        return `${year}-${month}` === deleteMonth;
                     };
 
-                    // 1. Scan Productivity Data
+                    // 1. Delete Productivity Data using actual ID
                     data.forEach(row => {
-                        if (row.TANGGAL && isTargetMonth(row.TANGGAL)) {
-                            const dateKey = row.TANGGAL.replace(/\//g, '-');
-                            const nikKey = row.NIK || 'NONIK';
-                            const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
-                            let jamMasuk = row[jamMasukKey] || '00:00';
-                            const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
-                            
-                            const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
-                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', docId);
+                        if (row.TANGGAL && isTargetMonth(row.TANGGAL) && row.__docId) {
+                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', row.__docId);
                             
                             if (currentBatchCount >= BATCH_LIMIT) {
                                 batches.push(window.writeBatch(window.db));
@@ -536,15 +572,10 @@
                         }
                     });
 
-                    // 2. Scan Hourly Data
+                    // 2. Delete Hourly Data using actual ID
                     hourlyData.forEach(row => {
-                        if (row.TANGGAL && isTargetMonth(row.TANGGAL)) {
-                            const safeDate = String(row.TANGGAL).replace(/\//g, '-');
-                            const safeJam = String(row.JAM).replace(/:/g, '');
-                            const safeNik = String(row.NIK || 'GENERAL').trim();
-                            const docId = `${safeDate}_${safeNik}_${safeJam}`;
-                            
-                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', docId);
+                        if (row.TANGGAL && isTargetMonth(row.TANGGAL) && row.__docId) {
+                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', row.__docId);
                             
                             if (currentBatchCount >= BATCH_LIMIT) {
                                 batches.push(window.writeBatch(window.db));
@@ -560,12 +591,15 @@
                         for (const b of batches) {
                             await b.commit();
                         }
+                        setShowConfirmModal(false);
                         showNotification('success', `Berhasil menghapus ${count} data bulan ${deleteMonth}.`);
                     } else {
+                        setShowConfirmModal(false);
                         showNotification('error', `Tidak ditemukan data untuk bulan ${deleteMonth}.`);
                     }
                 } catch(e) { 
                     console.error(e);
+                    setShowConfirmModal(false);
                     showNotification('error', "Gagal menghapus: " + e.message); 
                 } finally {
                     setIsResetting(false);
@@ -749,6 +783,16 @@
                 <div className="min-h-screen bg-slate-50 font-sans pb-20">
                     <DynamicIsland status={notifyState.status} message={notifyState.message} isVisible={notifyState.visible} />
                     
+                    {/* CUSTOM MODAL */}
+                    <ConfirmationModal 
+                        isOpen={showConfirmModal}
+                        onClose={() => setShowConfirmModal(false)}
+                        onConfirm={executeDelete}
+                        title="Hapus Data"
+                        message={`Apakah Anda yakin ingin menghapus SEMUA data untuk bulan ${deleteMonth}? Tindakan ini tidak dapat dibatalkan.`}
+                        isProcessing={isResetting}
+                    />
+
                     <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -777,7 +821,7 @@
                                                 title="Pilih Bulan untuk Dihapus"
                                             />
                                             <button 
-                                                onClick={handleDeleteData} 
+                                                onClick={handleDeleteClick} 
                                                 disabled={isResetting} 
                                                 className="flex items-center justify-center w-8 h-8 rounded-md bg-red-100 text-red-600 hover:bg-red-200 transition shadow-sm" 
                                                 title="Hapus Data Bulan Ini"
