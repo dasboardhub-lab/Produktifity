@@ -123,7 +123,7 @@
             </div>
         );
 
-        // --- StatCard Component (Added Back) ---
+        // --- StatCard Component (Restored) ---
         const StatCard = ({ title, value, sub, icon: IconComp, colorClass }) => (
             <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-center gap-4">
                 <div className={`p-3 rounded-lg ${colorClass}`}>
@@ -285,6 +285,7 @@
                     const total = parsedData.length;
                     
                     if (total === 0) {
+                        alert("File kosong atau format salah.");
                         setIsUploading(false);
                         return;
                     }
@@ -313,7 +314,6 @@
                             setUploadProgress(Math.round((processed / total) * 100));
                         }
                         setSyncStatus("success");
-                        event.target.value = null;
                         alert("Data Berhasil Disinkronkan ke Database Utama!");
                     } catch (err) {
                         console.error("Upload failed:", err);
@@ -321,12 +321,14 @@
                         alert("Gagal mengupload: " + err.message);
                     } finally {
                         setIsUploading(false);
+                        setUploadProgress(0);
+                        event.target.value = null; // Reset input agar bisa upload ulang
                     }
                 };
                 reader.readAsText(file);
             };
 
-            // 4. Upload Logic (Hourly)
+            // 4. Upload Logic (Hourly) - IMPROVED
             const handleHourlyUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
@@ -340,6 +342,7 @@
                     const total = parsedData.length;
 
                     if (total === 0) {
+                        alert("File kosong atau format tidak sesuai (Gunakan header: JAM, LOAD).");
                         setIsUploadingHourly(false);
                         return;
                     }
@@ -379,13 +382,13 @@
                         }
 
                         alert("Data Per Jam Berhasil Disinkronkan!");
-                        event.target.value = null;
                     } catch (err) {
                         console.error("Hourly Upload failed:", err);
                         alert("Gagal upload data: " + err.message);
                     } finally {
                         setIsUploadingHourly(false);
                         setUploadProgress(0);
+                        event.target.value = null; // Reset input agar bisa upload ulang
                     }
                 };
                 reader.readAsText(file);
@@ -596,7 +599,9 @@
                                     </label>
                                     <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm ${isUploadingHourly ? 'bg-slate-100 cursor-not-allowed' : 'bg-teal-600 border-teal-600 text-white hover:bg-teal-700'}`}>
                                         {isUploadingHourly ? <div className="loader"></div> : <Icons.Clock size={18} />}
-                                        <span className="font-medium text-sm">Import Hourly Data</span>
+                                        <span className="font-medium text-sm">
+                                            {isUploadingHourly ? `Uploading ${uploadProgress}%` : "Import Hourly Data"}
+                                        </span>
                                         <input type="file" accept=".csv" className="hidden" onChange={handleHourlyUpload} disabled={isUploadingHourly || !user} />
                                     </label>
                                 </div>
