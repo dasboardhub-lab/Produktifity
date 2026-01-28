@@ -296,12 +296,22 @@
             const [startDate, setStartDate] = useState(formatDateInput(thirtyDaysAgo));
             const [endDate, setEndDate] = useState(formatDateInput(today));
             
+            // --- NEW: DELETE MONTH STATE ---
+            const [deleteMonth, setDeleteMonth] = useState("");
+
             const [searchTerm, setSearchTerm] = useState("");
             
             // Notification State
             const [notifyState, setNotifyState] = useState({ status: 'idle', message: '', visible: false });
             const [user, setUser] = useState(null);
             
+            // Loading States
+            const [isUploading, setIsUploading] = useState(false);
+            const [isUploadingHourly, setIsUploadingHourly] = useState(false);
+            const [isResetting, setIsResetting] = useState(false);
+            const [uploadProgress, setUploadProgress] = useState(0);
+            const [syncStatus, setSyncStatus] = useState("connecting");
+
             const showNotification = (status, message, autoHide = true) => {
                 setNotifyState({ status, message, visible: true });
                 if (autoHide && (status === 'success' || status === 'error')) {
@@ -316,7 +326,10 @@
             useEffect(() => {
                 const initAuth = async () => {
                     if (!window.auth) return;
-                    window.onAuthStateChanged(window.auth, (u) => setUser(u));
+                    window.onAuthStateChanged(window.auth, (u) => {
+                        setUser(u);
+                        if(u) setSyncStatus("idle");
+                    });
                     try { await window.signInAnonymously(window.auth); } 
                     catch (err) { showNotification('error', "Gagal login DB."); }
                 };
@@ -332,6 +345,7 @@
                     const loadedData = [];
                     snapshot.forEach(doc => loadedData.push(doc.data()));
                     setData(loadedData);
+                    if (loadedData.length > 0) setSyncStatus("success");
                 });
 
                 const colHourlyRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs');
@@ -344,15 +358,20 @@
                 return () => { unsubscribe(); unsubscribeHourly(); };
             }, [user]);
 
-            // 3. Upload Daily - UNIQUE ID: TANGGAL + NIK + JAM MASUK
+            // 3. Upload Daily
             const handleFileUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
+                setIsUploading(true);
                 showNotification('loading', 'Mengupload Data...', false);
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const parsedData = parseCSV(e.target.result);
-                    if (parsedData.length === 0) { showNotification('error', "File kosong."); return; }
+                    if (parsedData.length === 0) { 
+                        showNotification('error', "File kosong."); 
+                        setIsUploading(false);
+                        return; 
+                    }
                     const batchSize = 400; const chunks = [];
                     for (let i = 0; i < parsedData.length; i += batchSize) chunks.push(parsedData.slice(i, i + batchSize));
                     try {
@@ -363,13 +382,10 @@
                                 if (!row.TANGGAL || !row.NIK) return; 
                                 const dateKey = row.TANGGAL.replace(/\//g, '-');
                                 const nikKey = row.NIK || 'NONIK';
-                                // Find Jam Masuk column (case insensitive search)
                                 const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
                                 let jamMasuk = row[jamMasukKey] || '00:00';
-                                // Sanitize jam (remove colons/spaces)
                                 const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
                                 
-                                // ID: TANGGAL_NIK_JAMMASUK
                                 const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
                                 const docRef = window.doc(colRef, docId);
                                 batch.set(docRef, row);
@@ -378,21 +394,26 @@
                         }
                         showNotification('success', "Data Harian Tersimpan!");
                     } catch (err) { showNotification('error', err.message); } 
-                    finally { event.target.value = null; }
+                    finally { 
+                        event.target.value = null; 
+                        setIsUploading(false);
+                    }
                 };
                 reader.readAsText(file);
             };
 
-            // 4. Upload Hourly - UNIQUE ID: TANGGAL + NIK + TIME (JAM)
+            // 4. Upload Hourly
             const handleHourlyUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
+                setIsUploadingHourly(true);
                 showNotification('loading', 'Mengupload Hourly...', false);
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const parsedData = parseCSV(e.target.result);
                     if (parsedData.length === 0) { 
                         showNotification('error', "File kosong."); 
+                        setIsUploadingHourly(false);
                         return; 
                     }
 
@@ -407,16 +428,16 @@
                     for (let i = 0; i < parsedData.length; i += batchSize) chunks.push(parsedData.slice(i, i + batchSize));
 
                     try {
+                        let processed = 0;
                         const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs');
+                        
                         let validRows = 0;
-
                         for (const chunk of chunks) {
                             const batch = window.writeBatch(window.db);
                             chunk.forEach(row => {
                                 const jamKey = findKey(row, ['jam', 'hour', 'time', 'waktu', 'pukul']);
                                 const loadKey = findKey(row, ['load', 'total', 'qty', 'volume', 'parcel', 'paket']);
                                 const dateKey = findKey(row, ['tanggal', 'date', 'tgl']);
-                                // Try to find NIK key in hourly data
                                 const nikKeyFound = findKey(row, ['nik', 'id', 'user']);
 
                                 const jam = row[jamKey] || row.JAM;
@@ -429,7 +450,6 @@
                                     const safeJam = String(jam).replace(/:/g, '');
                                     const safeNik = String(nik).trim();
                                     
-                                    // ID: TANGGAL_NIK_TIME
                                     const docId = `${safeDate}_${safeNik}_${safeJam}`;
                                     const docRef = window.doc(colRef, docId);
                                     
@@ -439,7 +459,7 @@
                                         JAM: jam,
                                         LOAD: finalLoad,
                                         TANGGAL: tanggal,
-                                        NIK: nik // Save NIK to DB even if 'GENERAL'
+                                        NIK: nik
                                     };
 
                                     batch.set(docRef, saveData);
@@ -459,45 +479,100 @@
                         console.error(err);
                         showNotification('error', "Error: " + err.message); 
                     } 
-                    finally { event.target.value = null; }
+                    finally { 
+                        event.target.value = null; 
+                        setIsUploadingHourly(false);
+                    }
                 };
                 reader.readAsText(file);
             };
 
-            const handleResetData = async () => {
-                if (!confirm("Hapus semua data?")) return;
-                showNotification('loading', 'Menghapus...', false);
+            // 5. Delete Data By Month
+            const handleDeleteData = async () => {
+                if (!deleteMonth) {
+                    showNotification('error', "Silakan pilih Bulan & Tahun terlebih dahulu.");
+                    return;
+                }
+
+                if (!confirm(`⚠️ PERINGATAN: Apakah Anda yakin ingin MENGHAPUS SEMUA DATA untuk bulan ${deleteMonth}? Tindakan ini tidak dapat dibatalkan.`)) return;
+                
+                showNotification('loading', `Menghapus data bulan ${deleteMonth}...`, false);
+                setIsResetting(true);
+                
                 try {
-                    const batch = window.writeBatch(window.db);
                     let count = 0;
+                    const BATCH_LIMIT = 450; 
+                    let currentBatchCount = 0;
+                    let batches = [window.writeBatch(window.db)];
+
+                    // Helper to check if row date matches selected YYYY-MM
+                    const isTargetMonth = (dateStr) => {
+                        if (!dateStr) return false;
+                        const parts = dateStr.split('/');
+                        if (parts.length !== 3) return false;
+                        const rowMonth = `${parts[2]}-${parts[1]}`; // YYYY-MM
+                        return rowMonth === deleteMonth;
+                    };
+
+                    // 1. Scan Productivity Data
                     data.forEach(row => {
-                         const dateKey = row.TANGGAL ? row.TANGGAL.replace(/\//g, '-') : 'NODATE';
-                         const nikKey = row.NIK || 'NONIK';
-                         const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
-                         let jamMasuk = row[jamMasukKey] || '00:00';
-                         const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
-                         const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', `${dateKey}_${nikKey}_${safeJamMasuk}`);
-                         batch.delete(docRef);
-                         count++;
-                    });
-                    // Fallback delete using old ID format if needed, but best effort here
-                    hourlyData.forEach(row => {
-                         const safeDate = String(row.TANGGAL||'GENERAL').replace(/\//g, '-');
-                         const safeJam = String(row.JAM).replace(/:/g, '');
-                         const safeNik = String(row.NIK||'GENERAL').trim();
-                         const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', `${safeDate}_${safeNik}_${safeJam}`);
-                         batch.delete(docRef);
-                         count++;
+                        if (row.TANGGAL && isTargetMonth(row.TANGGAL)) {
+                            const dateKey = row.TANGGAL.replace(/\//g, '-');
+                            const nikKey = row.NIK || 'NONIK';
+                            const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
+                            let jamMasuk = row[jamMasukKey] || '00:00';
+                            const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
+                            
+                            const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
+                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', docId);
+                            
+                            if (currentBatchCount >= BATCH_LIMIT) {
+                                batches.push(window.writeBatch(window.db));
+                                currentBatchCount = 0;
+                            }
+                            batches[batches.length - 1].delete(docRef);
+                            currentBatchCount++;
+                            count++;
+                        }
                     });
 
-                    if(count > 0) await batch.commit();
-                    showNotification('success', "Database Bersih.");
+                    // 2. Scan Hourly Data
+                    hourlyData.forEach(row => {
+                        if (row.TANGGAL && isTargetMonth(row.TANGGAL)) {
+                            const safeDate = String(row.TANGGAL).replace(/\//g, '-');
+                            const safeJam = String(row.JAM).replace(/:/g, '');
+                            const safeNik = String(row.NIK || 'GENERAL').trim();
+                            const docId = `${safeDate}_${safeNik}_${safeJam}`;
+                            
+                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', docId);
+                            
+                            if (currentBatchCount >= BATCH_LIMIT) {
+                                batches.push(window.writeBatch(window.db));
+                                currentBatchCount = 0;
+                            }
+                            batches[batches.length - 1].delete(docRef);
+                            currentBatchCount++;
+                            count++;
+                        }
+                    });
+
+                    if(count > 0) {
+                        for (const b of batches) {
+                            await b.commit();
+                        }
+                        showNotification('success', `Berhasil menghapus ${count} data bulan ${deleteMonth}.`);
+                    } else {
+                        showNotification('error', `Tidak ditemukan data untuk bulan ${deleteMonth}.`);
+                    }
                 } catch(e) { 
                     console.error(e);
-                    showNotification('error', "Gagal reset."); 
+                    showNotification('error', "Gagal menghapus: " + e.message); 
+                } finally {
+                    setIsResetting(false);
                 }
             };
 
+            // --- Calculation & Filtering ---
             const uniqueHubs = useMemo(() => [...new Set(data.map(d => d.HUB).filter(Boolean))], [data]);
             
             const isDateInRange = (dateStr) => {
@@ -536,6 +611,88 @@
                 const total = filteredData.reduce((acc, curr) => acc + cleanNumber(curr[key]), 0);
                 return (total / filteredData.length).toFixed(1);
             };
+
+            // --- ADVANCED ANALYSIS AGGREGATION ---
+            const analysisStats = useMemo(() => {
+                if (activeTab !== 'ANALYSIS' || filteredData.length === 0) return null;
+
+                const employeeMap = {};
+                filteredData.forEach(item => {
+                    if (!item.NIK || !item.NAME) return;
+                    if (!employeeMap[item.NIK]) {
+                        employeeMap[item.NIK] = { name: item.NAME, hub: item.HUB, totalLoad: 0, totalScore: 0, count: 0 };
+                    }
+                    const load = cleanNumber(item['LOAD TOTAL']) || 0;
+                    const score = cleanNumber(item['TOTAL SCORING']) || 0;
+                    employeeMap[item.NIK].totalLoad += load;
+                    employeeMap[item.NIK].totalScore += score;
+                    employeeMap[item.NIK].count += 1;
+                });
+
+                const employees = Object.values(employeeMap).map(e => ({
+                    ...e,
+                    avgScore: e.count ? (e.totalScore / e.count).toFixed(1) : 0,
+                    avgLoad: e.count ? Math.round(e.totalLoad / e.count) : 0
+                })).filter(e => e.avgLoad > 0);
+
+                const globalAvgLoad = employees.length ? (employees.reduce((acc, e) => acc + e.avgLoad, 0) / employees.length) : 0;
+                const globalAvgScore = employees.length ? (employees.reduce((acc, e) => acc + parseFloat(e.avgScore), 0) / employees.length) : 0;
+
+                const top10Sorters = [...employees]
+                    .sort((a, b) => parseFloat(b.avgScore) - parseFloat(a.avgScore) || b.avgLoad - a.avgLoad)
+                    .slice(0, 10)
+                    .map((p) => {
+                        let reason = "Performa Solid";
+                        let type = "Standard";
+                        let color = "bg-gray-100 text-gray-700";
+                        const isHighLoad = p.avgLoad > globalAvgLoad * 1.2;
+                        const isHighScore = parseFloat(p.avgScore) >= 95;
+                        const isExtremeLoad = p.avgLoad > globalAvgLoad * 1.5;
+
+                        if (isHighScore && isHighLoad) { reason = "🌟 MVP"; color = "bg-indigo-100 text-indigo-700 border-indigo-200"; }
+                        else if (isExtremeLoad) { reason = "🐎 Workhorse"; color = "bg-orange-100 text-orange-700 border-orange-200"; }
+                        else if (parseFloat(p.avgScore) >= 98) { reason = "🎯 Perfectionist"; color = "bg-green-100 text-green-700 border-green-200"; }
+                        else if (isHighLoad) { reason = "⚡ High Volume"; color = "bg-blue-100 text-blue-700 border-blue-200"; }
+                        else if (parseFloat(p.avgScore) > globalAvgScore) { reason = "✅ Reliable"; color = "bg-teal-100 text-teal-700 border-teal-200"; }
+
+                        return { ...p, reason, badgeColor: color };
+                    });
+
+                const bottomPerformers = [...employees].sort((a, b) => parseFloat(a.avgScore) - parseFloat(b.avgScore)).slice(0, 5);
+                return { employees, globalAvgLoad, globalAvgScore, top10Sorters, bottomPerformers };
+            }, [filteredData, activeTab]);
+
+            const currentStats = useMemo(() => {
+                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return {}; 
+                const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
+                return {
+                    wh: getMetricTotal(`WH ${activeTab}`),
+                    load: getMetricTotal(`LOAD ${activeTab}`),
+                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`),
+                    prdAttend: getMetricAvg(`PRD ${activeTab} BY ATTENDANCE`),
+                    scoring: getMetricTotal(scoringKey) 
+                };
+            }, [filteredData, activeTab]);
+
+            const chartData = useMemo(() => {
+                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return [];
+                const grouped = {};
+                filteredData.forEach(item => {
+                    const date = item.TANGGAL;
+                    if(!date) return;
+                    if(!grouped[date]) grouped[date] = { date, load: 0, prd: 0, count: 0 };
+                    grouped[date].load += cleanNumber(item[`LOAD ${activeTab}`]);
+                    grouped[date].prd += cleanNumber(item[`PRD ${activeTab} BY WH`]);
+                    grouped[date].count += 1;
+                });
+                return Object.values(grouped).sort((a,b) => {
+                     const [da, ma, ya] = a.date.split('/');
+                     const [db, mb, yb] = b.date.split('/');
+                     return new Date(`${ma}/${da}/${ya}`) - new Date(`${mb}/${db}/${yb}`);
+                }).map(g => ({ ...g, avgPrd: g.count ? Math.round(g.prd / g.count) : 0 }));
+            }, [filteredData, activeTab]);
+
+            const totalScoringSum = getMetricTotal("TOTAL SCORING");
 
             const hourlyStats = useMemo(() => {
                 if (activeTab !== 'HOURLY') return null;
@@ -586,75 +743,6 @@
                 return { dates, hours, pivotMap, chartData, opCodeStats };
             }, [filteredHourlyData, filteredData, activeTab]);
 
-            const analysisStats = useMemo(() => {
-                if (activeTab !== 'ANALYSIS' || filteredData.length === 0) return null;
-                const employeeMap = {};
-                filteredData.forEach(item => {
-                    if (!item.NIK || !item.NAME) return;
-                    if (!employeeMap[item.NIK]) employeeMap[item.NIK] = { name: item.NAME, hub: item.HUB, totalLoad: 0, totalScore: 0, count: 0 };
-                    const load = cleanNumber(item['LOAD TOTAL']) || 0;
-                    const score = cleanNumber(item['TOTAL SCORING']) || 0;
-                    employeeMap[item.NIK].totalLoad += load;
-                    employeeMap[item.NIK].totalScore += score;
-                    employeeMap[item.NIK].count += 1;
-                });
-                const employees = Object.values(employeeMap).map(e => ({
-                    ...e,
-                    avgScore: e.count ? (e.totalScore / e.count).toFixed(1) : 0,
-                    avgLoad: e.count ? Math.round(e.totalLoad / e.count) : 0
-                })).filter(e => e.avgLoad > 0);
-                const globalAvgLoad = employees.length ? (employees.reduce((acc, e) => acc + e.avgLoad, 0) / employees.length) : 0;
-                const globalAvgScore = employees.length ? (employees.reduce((acc, e) => acc + parseFloat(e.avgScore), 0) / employees.length) : 0;
-                const top10Sorters = [...employees].sort((a, b) => parseFloat(b.avgScore) - parseFloat(a.avgScore) || b.avgLoad - a.avgLoad).slice(0, 10).map((p) => {
-                        let reason = "Performa Solid";
-                        let type = "Standard";
-                        let color = "bg-gray-100 text-gray-700";
-                        const isHighLoad = p.avgLoad > globalAvgLoad * 1.2;
-                        const isHighScore = parseFloat(p.avgScore) >= 95;
-                        const isExtremeLoad = p.avgLoad > globalAvgLoad * 1.5;
-                        if (isHighScore && isHighLoad) { reason = "🌟 MVP"; color = "bg-indigo-100 text-indigo-700 border-indigo-200"; }
-                        else if (isExtremeLoad) { reason = "🐎 Workhorse"; color = "bg-orange-100 text-orange-700 border-orange-200"; }
-                        else if (parseFloat(p.avgScore) >= 98) { reason = "🎯 Perfectionist"; color = "bg-green-100 text-green-700 border-green-200"; }
-                        else if (isHighLoad) { reason = "⚡ High Volume"; color = "bg-blue-100 text-blue-700 border-blue-200"; }
-                        else if (parseFloat(p.avgScore) > globalAvgScore) { reason = "✅ Reliable"; color = "bg-teal-100 text-teal-700 border-teal-200"; }
-                        return { ...p, reason, badgeColor: color };
-                    });
-                const bottomPerformers = [...employees].sort((a, b) => parseFloat(a.avgScore) - parseFloat(b.avgScore)).slice(0, 5);
-                return { employees, globalAvgLoad, globalAvgScore, top10Sorters, bottomPerformers };
-            }, [filteredData, activeTab]);
-
-            const currentStats = useMemo(() => {
-                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return {}; 
-                const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
-                return {
-                    wh: getMetricTotal(`WH ${activeTab}`),
-                    load: getMetricTotal(`LOAD ${activeTab}`),
-                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`),
-                    prdAttend: getMetricAvg(`PRD ${activeTab} BY ATTENDANCE`),
-                    scoring: getMetricTotal(scoringKey) 
-                };
-            }, [filteredData, activeTab]);
-
-            const chartData = useMemo(() => {
-                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return [];
-                const grouped = {};
-                filteredData.forEach(item => {
-                    const date = item.TANGGAL;
-                    if(!date) return;
-                    if(!grouped[date]) grouped[date] = { date, load: 0, prd: 0, count: 0 };
-                    grouped[date].load += cleanNumber(item[`LOAD ${activeTab}`]);
-                    grouped[date].prd += cleanNumber(item[`PRD ${activeTab} BY WH`]);
-                    grouped[date].count += 1;
-                });
-                return Object.values(grouped).sort((a,b) => {
-                     const [da, ma, ya] = a.date.split('/');
-                     const [db, mb, yb] = b.date.split('/');
-                     return new Date(`${ma}/${da}/${ya}`) - new Date(`${mb}/${db}/${yb}`);
-                }).map(g => ({ ...g, avgPrd: g.count ? Math.round(g.prd / g.count) : 0 }));
-            }, [filteredData, activeTab]);
-
-            const totalScoringSum = getMetricTotal("TOTAL SCORING");
-
             if (!window.Recharts) return <div className="p-10 text-center">Loading Library...</div>;
 
             return (
@@ -670,19 +758,43 @@
                                         <h1 className="text-xl font-bold text-slate-900">Dashboard Produktivitas</h1>
                                         <div className="flex items-center gap-2 mt-1">
                                             <span className={`w-2 h-2 rounded-full ${user ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                            <p className="text-xs text-slate-500">{user ? 'Terhubung (logsheet-5r)' : 'Menghubungkan...'}</p>
+                                            <p className="text-xs text-slate-500">
+                                                {syncStatus === 'success' ? 'Database Terhubung (logsheet-5r)' : 
+                                                 syncStatus === 'syncing' ? 'Menyinkronkan...' : 
+                                                 syncStatus === 'error' ? 'Gagal Terhubung' : 'Menghubungkan...'}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 items-center flex-wrap md:flex-nowrap">
                                     {(data.length > 0 || hourlyData.length > 0) && (
-                                        <button onClick={handleResetData} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition shadow-sm" title="Hapus Semua"><Icons.Trash size={18} /></button>
+                                        <div className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg p-1 mr-2">
+                                            <input 
+                                                type="month" 
+                                                value={deleteMonth} 
+                                                onChange={(e) => setDeleteMonth(e.target.value)}
+                                                className="bg-transparent text-xs text-red-800 outline-none border-none px-1"
+                                                title="Pilih Bulan untuk Dihapus"
+                                            />
+                                            <button 
+                                                onClick={handleDeleteData} 
+                                                disabled={isResetting} 
+                                                className="flex items-center justify-center w-8 h-8 rounded-md bg-red-100 text-red-600 hover:bg-red-200 transition shadow-sm" 
+                                                title="Hapus Data Bulan Ini"
+                                            >
+                                                {isResetting ? <div className="loader border-red-600 border-t-transparent w-4 h-4"></div> : <Icons.Trash size={16} />}
+                                            </button>
+                                        </div>
                                     )}
-                                    <label className="flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700">
-                                        <Icons.Database size={18} /><span className="font-medium text-sm">Data Harian</span><input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={notifyState.status === 'loading' || !user} />
+                                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm ${isUploading ? 'bg-slate-100 cursor-not-allowed' : 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'}`}>
+                                        {isUploading ? <div className="loader"></div> : <Icons.Database size={18} />}
+                                        <span className="font-medium text-sm">{isUploading ? `Uploading ${uploadProgress}%` : "Import Daily Data"}</span>
+                                        <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={isUploading || !user} />
                                     </label>
-                                    <label className="flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm bg-teal-600 border-teal-600 text-white hover:bg-teal-700">
-                                        <Icons.Clock size={18} /><span className="font-medium text-sm">Data Per Jam</span><input type="file" accept=".csv" className="hidden" onChange={handleHourlyUpload} disabled={notifyState.status === 'loading' || !user} />
+                                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm ${isUploadingHourly ? 'bg-slate-100 cursor-not-allowed' : 'bg-teal-600 border-teal-600 text-white hover:bg-teal-700'}`}>
+                                        {isUploadingHourly ? <div className="loader"></div> : <Icons.Clock size={18} />}
+                                        <span className="font-medium text-sm">Import Hourly Data</span>
+                                        <input type="file" accept=".csv" className="hidden" onChange={handleHourlyUpload} disabled={isUploadingHourly || !user} />
                                     </label>
                                 </div>
                             </div>
@@ -690,7 +802,7 @@
                     </header>
 
                     <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-                        {data.length === 0 && hourlyData.length === 0 && (
+                        {data.length === 0 && hourlyData.length === 0 && !isUploading && (
                             <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl">
                                 <div className="p-4 bg-white rounded-full shadow-sm mb-4"><Icons.Database size={48} className="text-slate-400" /></div>
                                 <h3 className="text-xl font-bold text-slate-800 mb-2">Menunggu Data</h3>
