@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Produktivitas 2025 (Live Data)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+
+    <!-- Recharts -->
+    <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Fonts -->
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; background-color: #eff6ff; }
+        .tab-inactive { color: #64748b; hover:text-slate-900; }
+        .loader { border: 2px solid #f3f3f3; border-top: 2px solid #3498db; border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+
+    <!-- FIREBASE SETUP (Module Script) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // --- KONFIGURASI FIREBASE ---
+        let firebaseConfig;
+        let appId = 'default-app';
+        
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                firebaseConfig = JSON.parse(__firebase_config);
+                appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app';
+            } else {
+                // Fallback config (jika dijalankan lokal)
+                firebaseConfig = {
+                    apiKey: "AIzaSyAqbDeVLDBRDEIfi4RliLMC-3Qrwh8p96k",
+                    authDomain: "logsheet-5r.firebaseapp.com",
+                    projectId: "logsheet-5r",
+                    storageBucket: "logsheet-5r.firebasestorage.app",
+                    messagingSenderId: "358725557740",
+                    appId: "1:358725557740:web:06c56d626ad32b101ff4c9"
+                };
+            }
+        } catch (e) {
+            console.error("Error loading config", e);
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        window.db = db;
+        window.auth = auth;
+        window.collection = collection;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.deleteDoc = deleteDoc;
+        window.onSnapshot = onSnapshot;
+        window.writeBatch = writeBatch;
+        window.appId = appId;
+        window.signInAnonymously = signInAnonymously;
+        window.signInWithCustomToken = signInWithCustomToken;
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.token = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    </script>
+
+    <!-- MAIN APP (React) -->
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+        const { 
+            BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
+            PieChart, Pie, Cell, ComposedChart, Area, AreaChart, ScatterChart, Scatter, ZAxis, ReferenceLine
+        } = window.Recharts || {};
+
+        // --- Icons ---
+        const Icon = ({ path, color = "currentColor", size = 20, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            Upload: (props) => <Icon {...props} path={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></>} />,
+            Filter: (props) => <Icon {...props} path={<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>} />,
+            Search: (props) => <Icon {...props} path={<><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></>} />,
+            Clock: (props) => <Icon {...props} path={<><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></>} />,
+            Box: (props) => <Icon {...props} path={<><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></>} />,
+            Zap: (props) => <Icon {...props} path={<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>} />,
+            Award: (props) => <Icon {...props} path={<><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></>} />,
+            Activity: (props) => <Icon {...props} path={<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>} />,
+            Database: (props) => <Icon {...props} path={<><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></>} />,
+            Brain: (props) => <Icon {...props} path={<><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"></path><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"></path></>} />,
+            Chart: (props) => <Icon {...props} path={<><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></>} />,
+            Star: (props) => <Icon {...props} path={<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>} />,
+            Trash: (props) => <Icon {...props} path={<><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></>} />,
+        };
+
+        const Card = ({ children, className = "" }) => (
+            <div className={`bg-white rounded-xl shadow-sm border border-slate-200 ${className}`}>
+                {children}
+            </div>
+        );
+
+        // --- Helpers ---
+        const cleanNumber = (val) => {
+            if (typeof val === 'number') return val;
+            if (!val) return 0;
+            if (val.includes('%')) return parseFloat(val.replace('%', '').replace(',', '.'));
+            let str = val.replace(/,/g, ''); 
+            return parseFloat(str) || 0;
+        };
+
+        const parseCSV = (text) => {
+            const lines = text.split('\n').filter(line => line.trim() !== '');
+            if (lines.length < 2) return [];
+            const headers = lines[0].split(',').map(h => h.trim());
+            const result = [];
+            for (let i = 1; i < lines.length; i++) {
+                const currentLine = lines[i];
+                let values = [];
+                if (currentLine.includes('"')) {
+                    const regex = /(?:^|,)(\"(?:[^\"]+|\"\")*\"|[^,]*)/g;
+                    let match;
+                    while ((match = regex.exec(currentLine))) {
+                        let val = match[1];
+                        if (val.length && val.charAt(0) === '"') val = val.substring(1, val.length - 1);
+                        values.push(val);
+                    }
+                } else {
+                    values = currentLine.split(',');
+                }
+                if (values.length < headers.length * 0.6) continue;
+                const obj = {};
+                headers.forEach((header, index) => {
+                    obj[header] = values[index] ? values[index].trim() : '';
+                });
+                
+                // Flexible Check: Support both formats
+                if (obj['NIK'] || obj['TANGGAL'] || obj['JAM']) result.push(obj);
+            }
+            return result;
+        };
+
+        const CATEGORIES = [
+            { id: 'INBOUND', label: 'Inbound', color: 'blue' },
+            { id: 'OUTBOUND', label: 'Outbound', color: 'green' },
+            { id: 'PRIM/SEC', label: 'Prim/Sec', color: 'purple' },
+            { id: 'CONSOL', label: 'Consol', color: 'orange' },
+            { id: 'BP', label: 'BP', color: 'red' },
+            { id: 'DOK', label: 'Dok', color: 'indigo' },
+            { id: 'ANALYSIS', label: 'Analisa Lanjutan', color: 'pink', isSpecial: true },
+            { id: 'HOURLY', label: 'Analisa Per Jam', color: 'teal', isSpecial: true }
+        ];
+
+        // --- MAIN APP ---
+        function App() {
+            // NO MOCK DATA - Clean State
+            const [data, setData] = useState([]);
+            const [hourlyData, setHourlyData] = useState([]);
+
+            const [activeTab, setActiveTab] = useState("INBOUND");
+            const [filterHub, setFilterHub] = useState("All");
+            const [filterDate, setFilterDate] = useState("All");
+            const [searchTerm, setSearchTerm] = useState("");
+            
+            // Firebase States
+            const [user, setUser] = useState(null);
+            const [isUploading, setIsUploading] = useState(false);
+            const [isUploadingHourly, setIsUploadingHourly] = useState(false);
+            const [isResetting, setIsResetting] = useState(false);
+            const [uploadProgress, setUploadProgress] = useState(0);
+            const [syncStatus, setSyncStatus] = useState("idle");
+
+            // 1. Auth & Init
+            useEffect(() => {
+                const initAuth = async () => {
+                    if (!window.auth) return;
+                    
+                    window.onAuthStateChanged(window.auth, (u) => {
+                        setUser(u);
+                    });
+
+                    if (window.token) {
+                        await window.signInWithCustomToken(window.auth, window.token);
+                    } else {
+                        await window.signInAnonymously(window.auth);
+                    }
+                };
+                initAuth();
+            }, []);
+
+            // 2. Data Listener (Realtime) - Productivity
+            useEffect(() => {
+                if (!user || !window.db) return;
+                
+                // Listener 1: Productivity Logs
+                const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs');
+                const unsubscribe = window.onSnapshot(colRef, 
+                    (snapshot) => {
+                        if (!snapshot.empty) {
+                            const loadedData = [];
+                            snapshot.forEach(doc => loadedData.push(doc.data()));
+                            setData(loadedData);
+                            setSyncStatus("success");
+                        } else {
+                            setData([]);
+                            setSyncStatus("idle");
+                        }
+                    },
+                    (error) => console.error("Error fetching productivity data:", error)
+                );
+
+                // Listener 2: Hourly Logs
+                const colHourlyRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs');
+                const unsubscribeHourly = window.onSnapshot(colHourlyRef,
+                    (snapshot) => {
+                        if (!snapshot.empty) {
+                            const loadedHourly = [];
+                            snapshot.forEach(doc => loadedHourly.push(doc.data()));
+                            loadedHourly.sort((a,b) => (a.JAM || '').localeCompare(b.JAM || ''));
+                            setHourlyData(loadedHourly);
+                        } else {
+                            setHourlyData([]);
+                        }
+                    },
+                    (error) => console.error("Error fetching hourly data:", error)
+                );
+
+                return () => {
+                    unsubscribe();
+                    unsubscribeHourly();
+                };
+            }, [user]);
+
+            // 3. Upload Logic (Productivity)
+            const handleFileUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file || !user) return;
+
+                setIsUploading(true);
+                setUploadProgress(0);
+                setSyncStatus("syncing");
+
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const parsedData = parseCSV(e.target.result);
+                    const total = parsedData.length;
+                    
+                    if (total === 0) {
+                        setIsUploading(false);
+                        return;
+                    }
+
+                    const batchSize = 400; 
+                    const chunks = [];
+                    for (let i = 0; i < total; i += batchSize) {
+                        chunks.push(parsedData.slice(i, i + batchSize));
+                    }
+
+                    try {
+                        let processed = 0;
+                        const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs');
+
+                        for (const chunk of chunks) {
+                            const batch = window.writeBatch(window.db);
+                            chunk.forEach(row => {
+                                if (!row.TANGGAL || !row.NIK) return;
+                                const safeDate = row.TANGGAL.replace(/\//g, '-');
+                                const docId = `${safeDate}_${row.NIK}`;
+                                const docRef = window.doc(colRef, docId);
+                                batch.set(docRef, row);
+                            });
+                            await batch.commit();
+                            processed += chunk.length;
+                            setUploadProgress(Math.round((processed / total) * 100));
+                        }
+                        setSyncStatus("success");
+                        event.target.value = null;
+                    } catch (err) {
+                        console.error("Upload failed:", err);
+                        setSyncStatus("error");
+                        alert("Gagal mengupload data.");
+                    } finally {
+                        setIsUploading(false);
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // 4. Upload Logic (Hourly Data)
+            const handleHourlyUpload = (event) => {
+                const file = event.target.files[0];
+                if (!file || !user) return;
+
+                setIsUploadingHourly(true);
+                setUploadProgress(0); // Reset progress
+                
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const parsedData = parseCSV(e.target.result);
+                    const total = parsedData.length;
+
+                    if (total === 0) {
+                        setIsUploadingHourly(false);
+                        return;
+                    }
+
+                    // --- PERBAIKAN: Memecah data menjadi batch kecil (Chunking) ---
+                    const batchSize = 400; // Kirim per 400 baris agar tidak error size limit
+                    const chunks = [];
+                    for (let i = 0; i < total; i += batchSize) {
+                        chunks.push(parsedData.slice(i, i + batchSize));
+                    }
+
+                    try {
+                        let processed = 0;
+                        const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs');
+                        
+                        for (const chunk of chunks) {
+                            const batch = window.writeBatch(window.db);
+                            
+                            chunk.forEach(row => {
+                                const jam = row.JAM || row.Jam || row.Time || row.TIME;
+                                const tanggal = row.TANGGAL || row.Date || 'GENERAL';
+                                
+                                if (jam) {
+                                    const safeDate = tanggal.replace(/\//g, '-');
+                                    const safeJam = jam.replace(/:/g, '');
+                                    const docId = `${safeDate}_${safeJam}`;
+                                    const docRef = window.doc(colRef, docId);
+                                    
+                                    const load = cleanNumber(row.LOAD || row.Load || row.TOTAL || row.Total || 0);
+                                    row.LOAD = load;
+                                    row.JAM = jam;
+                                    
+                                    batch.set(docRef, row);
+                                }
+                            });
+
+                            await batch.commit(); // Kirim batch ini
+                            processed += chunk.length;
+                            // Update progress (opsional, bisa ditampilkan di UI jika mau)
+                            setUploadProgress(Math.round((processed / total) * 100));
+                        }
+
+                        alert("Data Per Jam Berhasil Ditambahkan!");
+                        event.target.value = null;
+                    } catch (err) {
+                        console.error("Hourly Upload failed:", err);
+                        alert("Gagal upload data per jam (Error: " + err.message + ")");
+                    } finally {
+                        setIsUploadingHourly(false);
+                        setUploadProgress(0);
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // 5. Reset/Clear Data
+            const handleResetData = async () => {
+                if (!confirm("⚠️ PERINGATAN: Apakah Anda yakin ingin MENGHAPUS SEMUA DATA dari database? Tindakan ini tidak dapat dibatalkan.")) return;
+                
+                setIsResetting(true);
+                try {
+                    const batch = window.writeBatch(window.db);
+                    let count = 0;
+
+                    // Delete Productivity Data
+                    data.forEach(row => {
+                        if (row.TANGGAL && row.NIK) {
+                            const safeDate = row.TANGGAL.replace(/\//g, '-');
+                            const docId = `${safeDate}_${row.NIK}`;
+                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs', docId);
+                            batch.delete(docRef);
+                            count++;
+                        }
+                    });
+
+                    // Delete Hourly Data
+                    hourlyData.forEach(row => {
+                        if (row.JAM) {
+                            const jam = row.JAM;
+                            const tanggal = row.TANGGAL || 'GENERAL';
+                            const safeDate = tanggal.replace(/\//g, '-');
+                            const safeJam = jam.replace(/:/g, '');
+                            const docId = `${safeDate}_${safeJam}`;
+                            const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs', docId);
+                            batch.delete(docRef);
+                            count++;
+                        }
+                    });
+
+                    if (count > 0) {
+                        await batch.commit();
+                        alert("Database berhasil dikosongkan.");
+                    } else {
+                        alert("Database sudah kosong.");
+                    }
+                } catch (err) {
+                    console.error("Reset failed:", err);
+                    alert("Gagal mereset database. Coba refresh halaman.");
+                } finally {
+                    setIsResetting(false);
+                }
+            };
+
+            // --- Calculation & Filtering ---
+            const uniqueHubs = useMemo(() => [...new Set(data.map(d => d.HUB).filter(Boolean))], [data]);
+            const uniqueDates = useMemo(() => [...new Set(data.map(d => d.TANGGAL))].sort(), [data]);
+
+            const filteredData = useMemo(() => {
+                return data.filter(item => {
+                    const matchHub = filterHub === "All" || item.HUB === filterHub;
+                    const matchDate = filterDate === "All" || item.TANGGAL === filterDate;
+                    const matchSearch = searchTerm === "" || 
+                        (item.NAME && item.NAME.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                        (item.NIK && item.NIK.includes(searchTerm));
+                    return matchHub && matchDate && matchSearch;
+                });
+            }, [data, filterHub, filterDate, searchTerm]);
+
+            // Filter Hourly Data
+            const filteredHourlyData = useMemo(() => {
+                let res = hourlyData;
+                if (filterDate !== "All") {
+                    const hasDate = hourlyData.some(d => d.TANGGAL);
+                    if (hasDate) {
+                        res = res.filter(d => d.TANGGAL === filterDate);
+                    }
+                }
+                return res.sort((a,b) => (a.JAM || '').localeCompare(b.JAM || ''));
+            }, [hourlyData, filterDate]);
+
+            const getMetricTotal = (key) => filteredData.reduce((acc, curr) => acc + cleanNumber(curr[key]), 0);
+            const getMetricAvg = (key) => {
+                if (filteredData.length === 0) return 0;
+                const total = filteredData.reduce((acc, curr) => acc + cleanNumber(curr[key]), 0);
+                return (total / filteredData.length).toFixed(1);
+            };
+
+            // --- ADVANCED ANALYSIS AGGREGATION ---
+            const analysisStats = useMemo(() => {
+                if (activeTab !== 'ANALYSIS' || filteredData.length === 0) return null;
+
+                const employeeMap = {};
+                filteredData.forEach(item => {
+                    if (!item.NIK || !item.NAME) return;
+                    if (!employeeMap[item.NIK]) {
+                        employeeMap[item.NIK] = { 
+                            name: item.NAME, 
+                            hub: item.HUB,
+                            totalLoad: 0, 
+                            totalScore: 0, 
+                            count: 0 
+                        };
+                    }
+                    const load = cleanNumber(item['LOAD TOTAL']) || 0;
+                    const score = cleanNumber(item['TOTAL SCORING']) || 0;
+                    
+                    employeeMap[item.NIK].totalLoad += load;
+                    employeeMap[item.NIK].totalScore += score;
+                    employeeMap[item.NIK].count += 1;
+                });
+
+                const employees = Object.values(employeeMap).map(e => ({
+                    ...e,
+                    avgScore: e.count ? (e.totalScore / e.count).toFixed(1) : 0,
+                    avgLoad: e.count ? Math.round(e.totalLoad / e.count) : 0
+                })).filter(e => e.avgLoad > 0);
+
+                const globalAvgLoad = employees.length ? (employees.reduce((acc, e) => acc + e.avgLoad, 0) / employees.length) : 0;
+                const globalAvgScore = employees.length ? (employees.reduce((acc, e) => acc + parseFloat(e.avgScore), 0) / employees.length) : 0;
+
+                const top10Sorters = [...employees]
+                    .sort((a, b) => parseFloat(b.avgScore) - parseFloat(a.avgScore) || b.avgLoad - a.avgLoad)
+                    .slice(0, 10)
+                    .map((p, idx) => {
+                        let reason = "Performa Solid";
+                        let type = "Standard";
+                        let color = "bg-gray-100 text-gray-700";
+
+                        const isHighLoad = p.avgLoad > globalAvgLoad * 1.2;
+                        const isHighScore = parseFloat(p.avgScore) >= 95;
+                        const isExtremeLoad = p.avgLoad > globalAvgLoad * 1.5;
+
+                        if (isHighScore && isHighLoad) {
+                            reason = "🌟 MVP: Volume Tinggi & Kualitas Sempurna";
+                            type = "MVP";
+                            color = "bg-indigo-100 text-indigo-700 border-indigo-200";
+                        } else if (isExtremeLoad) {
+                            reason = "🐎 Workhorse: Menangani Volume Tertinggi";
+                            type = "Workhorse";
+                            color = "bg-orange-100 text-orange-700 border-orange-200";
+                        } else if (parseFloat(p.avgScore) >= 98) {
+                            reason = "🎯 Perfectionist: Akurasi Hampir 100%";
+                            type = "Quality";
+                            color = "bg-green-100 text-green-700 border-green-200";
+                        } else if (isHighLoad) {
+                            reason = "⚡ High Volume: Produktivitas di atas rata-rata";
+                            type = "Volume";
+                            color = "bg-blue-100 text-blue-700 border-blue-200";
+                        } else if (parseFloat(p.avgScore) > globalAvgScore) {
+                            reason = "✅ Reliable: Skor Konsisten Bagus";
+                            type = "Reliable";
+                            color = "bg-teal-100 text-teal-700 border-teal-200";
+                        }
+
+                        return { ...p, reason, type, badgeColor: color };
+                    });
+
+                const bottomPerformers = [...employees].sort((a, b) => parseFloat(a.avgScore) - parseFloat(b.avgScore)).slice(0, 5);
+
+                return { employees, globalAvgLoad, globalAvgScore, top10Sorters, bottomPerformers };
+            }, [filteredData, activeTab]);
+
+
+            const currentStats = useMemo(() => {
+                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return {}; 
+                const prefix = activeTab === 'PRIM/SEC' ? 'PRIM/SEC' : activeTab; 
+                const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
+                return {
+                    wh: getMetricTotal(`WH ${activeTab}`),
+                    load: getMetricTotal(`LOAD ${activeTab}`),
+                    prdWh: getMetricAvg(`PRD ${activeTab} BY WH`),
+                    prdAttend: getMetricAvg(`PRD ${activeTab} BY ATTENDANCE`),
+                    scoring: getMetricAvg(scoringKey)
+                };
+            }, [filteredData, activeTab]);
+
+            const chartData = useMemo(() => {
+                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return [];
+                const grouped = {};
+                filteredData.forEach(item => {
+                    const date = item.TANGGAL;
+                    if(!date) return;
+                    if(!grouped[date]) grouped[date] = { date, load: 0, prd: 0, count: 0 };
+                    grouped[date].load += cleanNumber(item[`LOAD ${activeTab}`]);
+                    grouped[date].prd += cleanNumber(item[`PRD ${activeTab} BY WH`]);
+                    grouped[date].count += 1;
+                });
+                return Object.values(grouped).sort((a,b) => {
+                     const [da, ma, ya] = a.date.split('/');
+                     const [db, mb, yb] = b.date.split('/');
+                     return new Date(`${ma}/${da}/${ya}`) - new Date(`${mb}/${db}/${yb}`);
+                }).map(g => ({
+                    ...g,
+                    avgPrd: g.count ? Math.round(g.prd / g.count) : 0
+                }));
+            }, [filteredData, activeTab]);
+
+            const totalScoringAvg = getMetricAvg("TOTAL SCORING");
+
+            // --- Components ---
+            const StatCard = ({ title, value, sub, icon: IconComp, colorClass }) => (
+                <div className="p-4 bg-white border border-slate-200 rounded-xl flex items-center gap-4">
+                    <div className={`p-3 rounded-lg ${colorClass}`}>
+                        <IconComp size={24} />
+                    </div>
+                    <div>
+                        <p className="text-slate-500 text-sm font-medium">{title}</p>
+                        <h4 className="text-xl font-bold text-slate-800">{value}</h4>
+                        {sub && <p className="text-xs text-slate-400 mt-1">{sub}</p>}
+                    </div>
+                </div>
+            );
+
+            if (!window.Recharts) return <div className="p-10 text-center">Loading Library...</div>;
+
+            return (
+                <div className="min-h-screen bg-slate-50 font-sans pb-20">
+                    {/* --- HEADER --- */}
+                    <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-600 rounded-lg text-white"><Icons.Activity /></div>
+                                    <div>
+                                        <h1 className="text-xl font-bold text-slate-900">Dashboard Produktivitas</h1>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className={`w-2 h-2 rounded-full ${syncStatus === 'success' ? 'bg-green-500' : syncStatus === 'error' ? 'bg-red-500' : 'bg-slate-300'}`}></span>
+                                            <p className="text-xs text-slate-500">
+                                                {syncStatus === 'success' ? 'Database Terhubung (Live)' : 
+                                                 syncStatus === 'syncing' ? 'Menyinkronkan...' : 'Menunggu Data'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    {/* BUTTON: RESET DB */}
+                                    {(data.length > 0 || hourlyData.length > 0) && (
+                                        <button 
+                                            onClick={handleResetData}
+                                            disabled={isResetting}
+                                            className="flex items-center gap-2 px-3 py-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition shadow-sm"
+                                            title="Hapus Semua Data"
+                                        >
+                                            {isResetting ? <div className="loader"></div> : <Icons.Trash size={18} />}
+                                        </button>
+                                    )}
+
+                                    {/* BUTTON 1: DAILY PRODUCTIVITY */}
+                                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm ${isUploading ? 'bg-slate-100 border-slate-300 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700'}`}>
+                                        {isUploading ? <div className="loader"></div> : <Icons.Database size={18} />}
+                                        <span className="font-medium text-sm">
+                                            {isUploading ? `Uploading ${uploadProgress}%` : "Import / Tambah Data Harian"}
+                                        </span>
+                                        <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} disabled={isUploading || !user} />
+                                    </label>
+
+                                    {/* BUTTON 2: HOURLY LOAD */}
+                                    <label className={`flex items-center gap-2 px-4 py-2 rounded-lg border cursor-pointer transition shadow-sm ${isUploadingHourly ? 'bg-slate-100 border-slate-300 text-slate-500 cursor-not-allowed' : 'bg-teal-600 border-teal-600 text-white hover:bg-teal-700'}`}>
+                                        {isUploadingHourly ? <div className="loader"></div> : <Icons.Clock size={18} />}
+                                        <span className="font-medium text-sm">
+                                            Import / Tambah Data Per Jam
+                                        </span>
+                                        <input type="file" accept=".csv" className="hidden" onChange={handleHourlyUpload} disabled={isUploadingHourly || !user} />
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+                        
+                        {/* --- EMPTY STATE (JIKA DATABASE KOSONG) --- */}
+                        {data.length === 0 && hourlyData.length === 0 && !isUploading && (
+                            <div className="flex flex-col items-center justify-center py-20 text-center bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl">
+                                <div className="p-4 bg-white rounded-full shadow-sm mb-4">
+                                    <Icons.Database size={48} className="text-slate-400" />
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">Belum Ada Data</h3>
+                                <p className="text-slate-500 max-w-md mx-auto mb-6">
+                                    Database saat ini kosong. Silakan upload file CSV Anda melalui tombol di pojok kanan atas untuk mulai melihat analisa.
+                                </p>
+                                <div className="flex gap-3 text-xs text-slate-400">
+                                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-green-500"></div> Database Ready</span>
+                                    <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-indigo-500"></div> Waiting for Upload</span>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- CONTROLS (HANYA MUNCUL JIKA ADA DATA) --- */}
+                        {data.length > 0 && (
+                        <div className="flex flex-wrap gap-4 items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                            <div className="flex gap-4">
+                                <div className="flex items-center gap-2 border-r border-slate-200 pr-4">
+                                    <Icons.Filter size={16} className="text-slate-400"/>
+                                    <select value={filterHub} onChange={e => setFilterHub(e.target.value)} className="text-sm bg-transparent outline-none font-medium text-slate-700">
+                                        <option value="All">Semua HUB</option>
+                                        {uniqueHubs.map(h => <option key={h} value={h}>{h}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Icons.Filter size={16} className="text-slate-400"/>
+                                    <select value={filterDate} onChange={e => setFilterDate(e.target.value)} className="text-sm bg-transparent outline-none font-medium text-slate-700">
+                                        <option value="All">Semua Tanggal</option>
+                                        {uniqueDates.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <div className="relative">
+                                <Icons.Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"/>
+                                <input type="text" placeholder="Cari NIK / Nama..." className="pl-9 pr-4 py-2 bg-slate-50 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-64" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            </div>
+                        </div>
+                        )}
+
+                        {/* --- TOTAL SCORE --- */}
+                        {data.length > 0 && activeTab !== 'ANALYSIS' && activeTab !== 'HOURLY' && (
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                <Card className="p-6 bg-gradient-to-br from-indigo-600 to-blue-700 text-white md:col-span-1">
+                                    <p className="text-indigo-100 font-medium mb-1">Total Scoring Average</p>
+                                    <h2 className="text-4xl font-bold">{totalScoringAvg}</h2>
+                                    <p className="text-sm text-indigo-200 mt-2">Data Source: Firestore</p>
+                                </Card>
+                                <div className="md:col-span-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+                                    {CATEGORIES.filter(c => !c.isSpecial).map(cat => {
+                                        const key = cat.id === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${cat.id}`;
+                                        const score = getMetricAvg(key);
+                                        return (
+                                            <div key={cat.id} className="bg-white border border-slate-200 rounded-lg p-3 text-center">
+                                                <p className="text-xs text-slate-500 font-semibold mb-1">{cat.label}</p>
+                                                <p className={`text-lg font-bold ${score > 0 ? 'text-slate-800' : 'text-slate-300'}`}>{score}</p>
+                                            </div>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- CATEGORY TABS --- */}
+                        {data.length > 0 && (
+                        <div className="border-b border-slate-200 overflow-x-auto">
+                            <nav className="flex space-x-1 min-w-max">
+                                {CATEGORIES.map((cat) => (
+                                    <button
+                                        key={cat.id}
+                                        onClick={() => setActiveTab(cat.id)}
+                                        className={`px-6 py-3 text-sm font-medium rounded-t-lg transition-colors flex items-center gap-2 ${activeTab === cat.id ? 'tab-active' : 'tab-inactive bg-white hover:bg-slate-50'}`}
+                                    >
+                                        {cat.isSpecial && (cat.id === 'HOURLY' ? <Icons.Clock size={16} /> : <Icons.Brain size={16} />)}
+                                        {cat.label} {cat.isSpecial ? '' : 'Data'}
+                                    </button>
+                                ))}
+                            </nav>
+                        </div>
+                        )}
+
+                        {/* --- CONTENT AREA --- */}
+                        {activeTab === 'ANALYSIS' && analysisStats ? (
+                            // ================= ANALISA LANJUTAN VIEW =================
+                            <div className="space-y-6">
+                                <div className="grid grid-cols-1 gap-6">
+                                    <Card className="overflow-hidden border-indigo-200 flex flex-col h-full">
+                                        <div className="p-4 bg-indigo-50 border-b border-indigo-100">
+                                            <h3 className="font-bold text-indigo-900 flex items-center gap-2">
+                                                <Icons.Star size={18} /> Top 10 Sorter & Analisa Performa
+                                            </h3>
+                                            <p className="text-xs text-indigo-600 mt-1">Peringkat berdasarkan Skor Tertinggi & Konsistensi Volume</p>
+                                        </div>
+                                        <div className="overflow-x-auto flex-1">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="text-xs text-slate-500 bg-slate-50 uppercase sticky top-0">
+                                                    <tr>
+                                                        <th className="px-4 py-3 w-10 text-center">#</th>
+                                                        <th className="px-4 py-3">Nama</th>
+                                                        <th className="px-4 py-3 text-right">Avg Score</th>
+                                                        <th className="px-4 py-3">Kunci Sukses (Reason)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {analysisStats.top10Sorters.map((p, idx) => (
+                                                        <tr key={idx} className="hover:bg-slate-50">
+                                                            <td className="px-4 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
+                                                            <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
+                                                            <td className="px-4 py-3 text-right font-bold text-indigo-600">{p.avgScore}</td>
+                                                            <td className="px-4 py-3">
+                                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${p.badgeColor}`}>
+                                                                    {p.reason}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </Card>
+                                </div>
+
+                                <div className="grid grid-cols-1">
+                                    <Card className="overflow-hidden border-red-200">
+                                        <div className="p-4 bg-red-50 border-b border-red-100 flex justify-between items-center">
+                                            <h3 className="font-bold text-red-800 flex items-center gap-2">
+                                                <Icons.Activity size={18} /> Bottom 5 Performers (Prioritas Coaching)
+                                            </h3>
+                                        </div>
+                                        <table className="w-full text-sm text-left">
+                                            <thead className="text-xs text-slate-500 bg-slate-50 uppercase">
+                                                <tr>
+                                                    <th className="px-4 py-3">Nama</th>
+                                                    <th className="px-4 py-3 text-right">Avg Score</th>
+                                                    <th className="px-4 py-3 text-right">Avg Load</th>
+                                                    <th className="px-4 py-3">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {analysisStats.bottomPerformers.map((p, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50">
+                                                        <td className="px-4 py-3 font-medium text-slate-900">{p.name}</td>
+                                                        <td className="px-4 py-3 text-right font-bold text-red-600">{p.avgScore}</td>
+                                                        <td className="px-4 py-3 text-right text-slate-500">{p.avgLoad}</td>
+                                                        <td className="px-4 py-3 text-xs text-red-500 font-medium">Perlu Evaluasi</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </Card>
+                                </div>
+                            </div>
+                        ) : activeTab === 'HOURLY' ? (
+                             // ================= ANALISA PER JAM VIEW =================
+                             <div className="space-y-6">
+                                <Card className="p-6">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <div>
+                                            <h3 className="font-bold text-slate-800 text-lg">Tren Load Per Jam</h3>
+                                            <p className="text-sm text-slate-500">Distribusi beban kerja dari jam ke jam</p>
+                                        </div>
+                                        <div className="text-sm font-mono text-teal-600 bg-teal-50 px-3 py-1 rounded-lg">
+                                            {filteredHourlyData.length} Data Points
+                                        </div>
+                                    </div>
+                                    
+                                    {filteredHourlyData.length > 0 ? (
+                                        <div className="h-[400px]">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <AreaChart data={filteredHourlyData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                                    <defs>
+                                                        <linearGradient id="colorLoad" x1="0" y1="0" x2="0" y2="1">
+                                                            <stop offset="5%" stopColor="#14b8a6" stopOpacity={0.8}/>
+                                                            <stop offset="95%" stopColor="#14b8a6" stopOpacity={0}/>
+                                                        </linearGradient>
+                                                    </defs>
+                                                    <XAxis dataKey="JAM" stroke="#94a3b8" />
+                                                    <YAxis stroke="#94a3b8" />
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                    <Tooltip contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                                                    <Area type="monotone" dataKey="LOAD" stroke="#14b8a6" fillOpacity={1} fill="url(#colorLoad)" name="Volume Load" />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    ) : (
+                                        <div className="h-[300px] flex flex-col items-center justify-center text-slate-400">
+                                            <Icons.Clock size={48} className="mb-4 opacity-50" />
+                                            <p>Belum ada data hourly. Silakan upload CSV Data Per Jam.</p>
+                                        </div>
+                                    )}
+                                </Card>
+
+                                <Card className="overflow-hidden">
+                                    <div className="p-4 border-b border-slate-200 bg-slate-50">
+                                        <h3 className="font-bold text-slate-800">Detail Data Per Jam</h3>
+                                    </div>
+                                    <div className="overflow-x-auto max-h-[400px]">
+                                        <table className="w-full text-left text-sm whitespace-nowrap">
+                                            <thead className="bg-slate-50 text-slate-600 font-semibold sticky top-0 z-10">
+                                                <tr>
+                                                    <th className="px-6 py-3">Jam</th>
+                                                    <th className="px-6 py-3">Load Volume</th>
+                                                    <th className="px-6 py-3">Tanggal</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filteredHourlyData.length > 0 ? filteredHourlyData.map((row, idx) => (
+                                                    <tr key={idx} className="hover:bg-slate-50">
+                                                        <td className="px-6 py-3 font-mono text-teal-700 font-bold">{row.JAM}</td>
+                                                        <td className="px-6 py-3 font-medium">{parseInt(row.LOAD).toLocaleString()}</td>
+                                                        <td className="px-6 py-3 text-slate-500">{row.TANGGAL || '-'}</td>
+                                                    </tr>
+                                                )) : (
+                                                    <tr><td colSpan="3" className="p-8 text-center text-slate-400">Data tidak ditemukan</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Card>
+                             </div>
+                        ) : data.length > 0 ? (
+                            // ================= NORMAL DETAIL VIEW =================
+                            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                                {/* Metrics Cards */}
+                                <div className="lg:col-span-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <StatCard title={`WH ${activeTab}`} value={currentStats.wh.toLocaleString()} sub="Total Jam Kerja" icon={Icons.Clock} colorClass="bg-blue-50 text-blue-600" />
+                                    <StatCard title={`LOAD ${activeTab}`} value={currentStats.load.toLocaleString()} sub="Total Paket" icon={Icons.Box} colorClass="bg-green-50 text-green-600" />
+                                    <StatCard title={`PRD ${activeTab} BY WH`} value={currentStats.prdWh} sub="Avg Produktivitas / Jam" icon={Icons.Zap} colorClass="bg-orange-50 text-orange-600" />
+                                    <StatCard title={`PRD ${activeTab} ATTEND`} value={currentStats.prdAttend} sub="Avg Produktivitas / Hari" icon={Icons.Award} colorClass="bg-purple-50 text-purple-600" />
+                                </div>
+
+                                {/* Chart Area */}
+                                <Card className="lg:col-span-4 p-6">
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h3 className="font-bold text-slate-800">Tren Harian: {activeTab}</h3>
+                                        <div className="flex items-center gap-4 text-sm">
+                                            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-blue-500 rounded-full"></div> Productivity</div>
+                                            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-400 rounded-full"></div> Load Volume</div>
+                                        </div>
+                                    </div>
+                                    <div className="h-[300px]">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <ComposedChart data={chartData}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                <XAxis dataKey="date" style={{fontSize: '12px'}} stroke="#94a3b8" />
+                                                <YAxis yAxisId="left" orientation="left" stroke="#3b82f6" />
+                                                <YAxis yAxisId="right" orientation="right" stroke="#4ade80" />
+                                                <Tooltip contentStyle={{borderRadius: '8px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)'}} />
+                                                <Area yAxisId="right" type="monotone" dataKey="load" fill="#dcfce7" stroke="#4ade80" strokeWidth={2} />
+                                                <Line yAxisId="left" type="monotone" dataKey="avgPrd" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#3b82f6', strokeWidth:2, stroke:'#fff'}} />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </Card>
+
+                                {/* Detailed Table */}
+                                <Card className="lg:col-span-4 overflow-hidden">
+                                    <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-800">Data Detail: {activeTab}</h3>
+                                        <span className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-full">
+                                            Showing {filteredData.length} rows
+                                        </span>
+                                    </div>
+                                    <div className="overflow-x-auto max-h-[500px]">
+                                        <table className="w-full text-left text-sm whitespace-nowrap">
+                                            <thead className="bg-slate-50 text-slate-600 font-semibold sticky top-0 z-10 shadow-sm">
+                                                <tr>
+                                                    <th className="px-6 py-3">Tanggal</th>
+                                                    <th className="px-6 py-3">NIK</th>
+                                                    <th className="px-6 py-3">Nama</th>
+                                                    <th className="px-6 py-3 text-center bg-indigo-50/50 text-indigo-700">SCORING</th>
+                                                    <th className="px-6 py-3 text-right">WH</th>
+                                                    <th className="px-6 py-3 text-right">LOAD</th>
+                                                    <th className="px-6 py-3 text-right">PRD / WH</th>
+                                                    <th className="px-6 py-3 text-right">PRD / ATTEND</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {filteredData.length > 0 ? filteredData.map((row, idx) => {
+                                                    const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
+                                                    return (
+                                                        <tr key={idx} className="hover:bg-slate-50">
+                                                            <td className="px-6 py-3 text-slate-500">{row.TANGGAL}</td>
+                                                            <td className="px-6 py-3 font-mono text-xs">{row.NIK}</td>
+                                                            <td className="px-6 py-3 font-medium text-slate-800">{row.NAME}</td>
+                                                            <td className="px-6 py-3 text-center font-bold text-indigo-600 bg-indigo-50/20">{row[scoringKey] || '-'}</td>
+                                                            <td className="px-6 py-3 text-right">{row[`WH ${activeTab}`] || 0}</td>
+                                                            <td className="px-6 py-3 text-right font-medium">{parseInt(cleanNumber(row[`LOAD ${activeTab}`])).toLocaleString()}</td>
+                                                            <td className="px-6 py-3 text-right text-green-600 font-medium">{parseInt(cleanNumber(row[`PRD ${activeTab} BY WH`])).toLocaleString()}</td>
+                                                            <td className="px-6 py-3 text-right text-blue-600 font-medium">{parseInt(cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`])).toLocaleString()}</td>
+                                                        </tr>
+                                                    );
+                                                }) : (
+                                                    <tr><td colSpan="8" className="p-8 text-center text-slate-400">Data tidak ditemukan</td></tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </Card>
+                            </div>
+                        ) : null}
+
+                    </main>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
