@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas 2025</title>
+    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -43,8 +43,8 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="text-slate-800 antialiased">
-    <div id="root"></div>
+<body class="text-slate-800 antialiased flex flex-col min-h-screen">
+    <div id="root" class="flex-grow"></div>
 
     <!-- FIREBASE SETUP -->
     <script type="module">
@@ -82,6 +82,9 @@
             BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, 
             PieChart, Pie, Cell, ComposedChart, Area, AreaChart, ScatterChart, Scatter, ZAxis, ReferenceLine, LabelList
         } = window.Recharts || {};
+
+        // --- PASSWORD CONFIGURATION ---
+        const ADMIN_PASSWORD = "123"; // Ganti ini jika ingin password lain
 
         // --- ICONS ---
         const Icon = ({ path, className = "", size = 20, ...props }) => (
@@ -149,37 +152,24 @@
             return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`); 
         };
 
-        // --- ROBUST SCORE GETTER ---
-        // Mencari kolom skor dengan prioritas yang lebih luas
         const getScoreValue = (row, category) => {
             if (!row) return 0;
-            
-            // Definisikan kata kunci pencarian berdasarkan kategori
             let keywords = [];
-            
             if (category === 'TOTAL') {
-                // Prioritas untuk Total Scoring
                 keywords = ['TOTAL SCORING', 'SCORING TOTAL', 'TOTAL SCORE', 'TOTAL ACH', 'ACHIEVEMENT TOTAL'];
             } else if (category === 'PRIM/SEC') {
                 keywords = ['SCORING PRIM/SECOND', 'PRIM/SEC ACH BY WH', 'PRIM/SEC SCORING'];
             } else {
                 keywords = [`SCORING ${category}`, `${category} ACH BY WH`, `${category} SCORE`, `${category} SCORING`];
             }
-
-            // 1. Coba pencarian Exact Match dari keywords
             for (const key of keywords) {
                 if (row[key] !== undefined) return cleanNumber(row[key]);
             }
-
-            // 2. Coba pencarian Fuzzy (Case Insensitive & Partial Match) pada keys object row
             const rowKeys = Object.keys(row);
             for (const searchKey of keywords) {
                 const foundKey = rowKeys.find(k => k.toUpperCase().includes(searchKey.toUpperCase()));
                 if (foundKey) return cleanNumber(row[foundKey]);
             }
-
-            // 3. Fallback Khusus untuk "ACH BY WH" jika pencarian spesifik gagal
-            // Mencari kolom apa saja yang mengandung "ACH BY WH" dan nama kategori
             if (category !== 'TOTAL') {
                 const fallbackKey = rowKeys.find(k => 
                     k.toUpperCase().includes(category.toUpperCase()) && 
@@ -188,21 +178,16 @@
                 );
                 if (fallbackKey) return cleanNumber(row[fallbackKey]);
             }
-
             return 0;
         };
 
         const parseCSV = (text) => {
             const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
             if (lines.length < 2) return [];
-            
-            // Auto-detect separator
             const firstLine = lines[0];
             const separator = firstLine.includes(';') ? ';' : ',';
-            
             const headers = firstLine.split(separator).map(h => h.trim().replace(/^"|"$/g, ''));
             const result = [];
-            
             for (let i = 1; i < lines.length; i++) {
                 const currentLine = lines[i];
                 let values = [];
@@ -217,15 +202,12 @@
                 } else {
                     values = currentLine.split(separator);
                 }
-
                 if (values.length < headers.length * 0.6) continue;
-                
                 const obj = {};
                 headers.forEach((header, index) => {
                     const val = values[index] ? values[index].trim() : '';
                     obj[header] = val;
                 });
-                
                 if (Object.keys(obj).length > 0) result.push(obj);
             }
             return result;
@@ -391,6 +373,15 @@
             const handleFileUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
+                
+                // --- PASSWORD CHECK ---
+                const pass = prompt("Masukkan Password untuk Upload:");
+                if (pass !== ADMIN_PASSWORD) {
+                    alert("Password salah!");
+                    event.target.value = null;
+                    return;
+                }
+
                 setIsUploading(true);
                 showNotification('loading', 'Mengupload Data...', false);
                 const reader = new FileReader();
@@ -401,26 +392,84 @@
                         setIsUploading(false);
                         return; 
                     }
+                    
+                    // --- DUPLICATE CHECK LOGIC ---
+                    const newRows = [];
+                    const skippedCount = 0;
+                    
+                    // Buat Set ID dari data yang sudah ada di state
+                    const existingIDs = new Set(data.map(d => d.__docId));
+
+                    parsedData.forEach(row => {
+                        if (!row.TANGGAL || !row.NIK) return; 
+                        const dateKey = row.TANGGAL.replace(/\//g, '-');
+                        const nikKey = row.NIK || 'NONIK';
+                        const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
+                        let jamMasuk = row[jamMasukKey] || '00:00';
+                        const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
+                        
+                        const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
+                        
+                        if (existingIDs.has(docId)) {
+                             // DATA SUDAH ADA -> SKIP
+                             // skippedCount++; (Cannot increment const, logic needs adjusting if tracking count)
+                        } else {
+                             // DATA BARU -> ADD
+                             // But wait, user requested blocking double.
+                             // Actually, Firebase `setDoc` overwrites. To "block", we just don't call setDoc.
+                             // However, since we process in chunks, we need to filter BEFORE batching.
+                             row._tempId = docId;
+                             newRows.push(row);
+                        }
+                    });
+
+                    // Check duplicate within the file itself? 
+                    // Usually we check against DB.
+                    // To strictly "block" against DB without reading everything first is hard if data not loaded.
+                    // But here we have `data` loaded in state. So we can check against `data`.
+
+                    const finalRowsToUpload = [];
+                    let duplicates = 0;
+                    
+                    parsedData.forEach(row => {
+                        if (!row.TANGGAL || !row.NIK) return;
+                        const dateKey = row.TANGGAL.replace(/\//g, '-');
+                        const nikKey = row.NIK;
+                        const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
+                        let jamMasuk = row[jamMasukKey] || '00:00';
+                        const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
+                        const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
+
+                        if (existingIDs.has(docId)) {
+                            duplicates++;
+                        } else {
+                            row._tempId = docId;
+                            finalRowsToUpload.push(row);
+                        }
+                    });
+
+                    if (finalRowsToUpload.length === 0) {
+                        showNotification('success', `Selesai. ${duplicates} data duplikat dilewati. Tidak ada data baru.`);
+                        setIsUploading(false);
+                        event.target.value = null;
+                        return;
+                    }
+
                     const batchSize = 400; const chunks = [];
-                    for (let i = 0; i < parsedData.length; i += batchSize) chunks.push(parsedData.slice(i, i + batchSize));
+                    for (let i = 0; i < finalRowsToUpload.length; i += batchSize) chunks.push(finalRowsToUpload.slice(i, i + batchSize));
+                    
                     try {
                         const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'productivity_logs');
                         for (const chunk of chunks) {
                             const batch = window.writeBatch(window.db);
                             chunk.forEach(row => {
-                                if (!row.TANGGAL || !row.NIK) return; 
-                                const dateKey = row.TANGGAL.replace(/\//g, '-');
-                                const nikKey = row.NIK || 'NONIK';
-                                const jamMasukKey = Object.keys(row).find(k => k.toLowerCase().includes('masuk')) || 'Jam Masuk';
-                                let jamMasuk = row[jamMasukKey] || '00:00';
-                                const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
-                                const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
-                                const docRef = window.doc(colRef, docId);
-                                batch.set(docRef, row);
+                                const docRef = window.doc(colRef, row._tempId);
+                                const { _tempId, ...rowData } = row; // Remove temp ID
+                                batch.set(docRef, rowData);
                             });
                             await batch.commit();
                         }
-                        showNotification('success', "Data Harian Tersimpan!");
+                        showNotification('success', `Berhasil: ${finalRowsToUpload.length}, Duplikat: ${duplicates}`);
                     } catch (err) { showNotification('error', err.message); } 
                     finally { 
                         event.target.value = null; 
@@ -433,6 +482,15 @@
             const handleHourlyUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
+
+                // --- PASSWORD CHECK ---
+                const pass = prompt("Masukkan Password untuk Upload:");
+                if (pass !== ADMIN_PASSWORD) {
+                    alert("Password salah!");
+                    event.target.value = null;
+                    return;
+                }
+
                 setIsUploadingHourly(true);
                 showNotification('loading', 'Mengupload Hourly...', false);
                 const reader = new FileReader();
@@ -444,59 +502,80 @@
                         return; 
                     }
                     const findKey = (row, keywords) => Object.keys(row).find(key => keywords.some(k => key.toLowerCase().includes(k)));
+                    
+                    // Prepare Existing IDs check
+                    const existingIDs = new Set(hourlyData.map(d => d.__docId));
+                    const finalRowsToUpload = [];
+                    let duplicates = 0;
+
+                    parsedData.forEach(row => {
+                        const jamKey = findKey(row, ['jam', 'hour', 'time', 'waktu', 'pukul']);
+                        const loadKey = findKey(row, ['load', 'total', 'qty', 'volume', 'parcel', 'paket']);
+                        const dateKey = findKey(row, ['tanggal', 'date', 'tgl']);
+                        const nikKeyFound = findKey(row, ['nik', 'id', 'user']);
+                        
+                        const jamRaw = row[jamKey] || row.TIME || row.JAM;
+                        const loadRaw = row[loadKey] || row['Total Parcel'] || row.LOAD;
+                        const tanggal = row[dateKey] || row.TANGGAL || 'GENERAL';
+                        const nik = row[nikKeyFound] || row.NIK || 'GENERAL';
+                        
+                        let jam = jamRaw;
+                        if (jam && typeof jam === 'string' && jam.includes('-')) {
+                                jam = jam.split('-')[0].trim().replace('.', ':');
+                                if(jam.length === 4 && jam.indexOf(':') === -1) jam = jam.substring(0,2) + ":" + jam.substring(2);
+                        }
+
+                        if (jam && loadRaw !== undefined) {
+                            const safeDate = String(tanggal).replace(/\//g, '-');
+                            const safeJam = String(jam).replace(/:/g, '').replace('.', '');
+                            const safeNik = String(nik).trim();
+                            const docId = `${safeDate}_${safeNik}_${safeJam}`;
+                            
+                            if (existingIDs.has(docId)) {
+                                duplicates++;
+                            } else {
+                                const finalLoad = cleanNumber(loadRaw);
+                                // Save extra
+                                const saveData = { JAM: jam, LOAD: finalLoad, TANGGAL: tanggal, NIK: nik, _tempId: docId };
+                                // Detect HUB/NAME if exists
+                                const hubKey = findKey(row, ['hub']);
+                                if(hubKey) saveData.HUB = row[hubKey];
+                                const nameKey = findKey(row, ['name', 'nama']);
+                                if(nameKey) saveData.NAME = row[nameKey];
+
+                                // OpCodes
+                                Object.keys(row).forEach(k => {
+                                    if (!['TANGGAL', 'NIK', 'NAME', 'HUB', 'TIME', 'JAM', 'LOAD', 'Total Parcel', 'Idle'].includes(k)) {
+                                        saveData[k] = cleanNumber(row[k]);
+                                    }
+                                });
+                                finalRowsToUpload.push(saveData);
+                            }
+                        }
+                    });
+
+                    if (finalRowsToUpload.length === 0) {
+                        showNotification('success', `Selesai. ${duplicates} duplikat dilewati.`);
+                        setIsUploadingHourly(false);
+                        event.target.value = null;
+                        return;
+                    }
+
                     const batchSize = 400; const chunks = [];
-                    for (let i = 0; i < parsedData.length; i += batchSize) chunks.push(parsedData.slice(i, i + batchSize));
+                    for (let i = 0; i < finalRowsToUpload.length; i += batchSize) chunks.push(finalRowsToUpload.slice(i, i + batchSize));
                     try {
                         const colRef = window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'hourly_logs');
-                        let validRows = 0;
                         for (const chunk of chunks) {
                             const batch = window.writeBatch(window.db);
-                            chunk.forEach(row => {
-                                const jamKey = findKey(row, ['jam', 'hour', 'time', 'waktu', 'pukul']);
-                                const loadKey = findKey(row, ['load', 'total', 'qty', 'volume', 'parcel', 'paket']);
-                                const dateKey = findKey(row, ['tanggal', 'date', 'tgl']);
-                                const nikKeyFound = findKey(row, ['nik', 'id', 'user']);
-                                const hubKey = findKey(row, ['hub', 'cabang', 'station', 'lokasi']);
-                                const nameKey = findKey(row, ['name', 'nama', 'karyawan', 'employee', 'pic']);
-                                const jam = row[jamKey] || row.JAM;
-                                const loadRaw = row[loadKey] || row.LOAD;
-                                const tanggal = row[dateKey] || row.TANGGAL || 'GENERAL';
-                                const nik = row[nikKeyFound] || row.NIK || 'GENERAL';
-                                const hub = row[hubKey] || row.HUB || '';
-                                const name = row[nameKey] || row.NAME || '';
-
-                                if (jam && loadRaw !== undefined) {
-                                    const safeDate = String(tanggal).replace(/\//g, '-');
-                                    const safeJam = String(jam).replace(/:/g, '').replace('.', '');
-                                    const safeNik = String(nik).trim();
-                                    const docId = `${safeDate}_${safeNik}_${safeJam}`;
-                                    const docRef = window.doc(colRef, docId);
-                                    const finalLoad = cleanNumber(loadRaw);
-                                    
-                                    const saveData = {
-                                        JAM: jam,
-                                        LOAD: finalLoad,
-                                        TANGGAL: tanggal,
-                                        NIK: nik,
-                                        HUB: hub,
-                                        NAME: name
-                                    };
-
-                                    // Save OpCodes
-                                    Object.keys(row).forEach(k => {
-                                        if (!['TANGGAL', 'NIK', 'NAME', 'HUB', 'TIME', 'JAM', 'LOAD', 'Total Parcel', 'Idle'].includes(k)) {
-                                            saveData[k] = cleanNumber(row[k]);
-                                        }
-                                    });
-
-                                    batch.set(docRef, saveData);
-                                    validRows++;
-                                }
+                            chunk.forEach(dataItem => {
+                                const { _tempId, ...rowData } = dataItem;
+                                const docRef = window.doc(colRef, _tempId);
+                                batch.set(docRef, rowData);
                             });
                             await batch.commit();
                         }
-                        if (validRows === 0) showNotification('error', "Gagal membaca kolom JAM/LOAD. Cek format CSV.");
-                        else { showNotification('success', `Berhasil! ${validRows} data tersimpan.`); setActiveTab('HOURLY'); }
+                        showNotification('success', `Berhasil: ${finalRowsToUpload.length}, Duplikat: ${duplicates}`);
+                        setActiveTab('HOURLY'); 
                     } catch (err) { showNotification('error', "Error: " + err.message); } 
                     finally { event.target.value = null; setIsUploadingHourly(false); }
                 };
@@ -504,6 +583,11 @@
             };
 
             const handleDeleteClick = () => {
+                const pass = prompt("Masukkan Password untuk Menghapus:");
+                if (pass !== ADMIN_PASSWORD) {
+                    alert("Password salah!");
+                    return;
+                }
                 if (!deleteMonth) { showNotification('error', "Pilih Bulan & Tahun dulu."); return; }
                 setShowConfirmModal(true);
             };
@@ -641,8 +725,7 @@
                     let wh = cleanNumber(item['WH TOTAL']);
                     if (wh === 0) wh = cleanNumber(item['WH INBOUND']) + cleanNumber(item['WH OUTBOUND']);
 
-                    // Use updated scoring logic
-                    const score = getScoreValue(item, 'TOTAL') || 0; // Use helper function
+                    const score = getScoreValue(item, 'TOTAL') || 0; 
                     
                     employeeMap[nik].totalLoad += load;
                     employeeMap[nik].totalWH += wh;
@@ -650,7 +733,6 @@
                     employeeMap[nik].count += 1;
                 });
 
-                // Find Peak Hourly Load per user
                 const hourlyPeaks = {};
                 filteredHourlyData.forEach(item => {
                      const nik = String(item.NIK).trim();
@@ -663,7 +745,6 @@
                      }
                 });
 
-                // Group Hourly Data by NIK to find Favorite OpCode
                 const hourlyOpMap = {};
                 filteredHourlyData.forEach(item => {
                     const nik = String(item.NIK).trim();
@@ -689,7 +770,6 @@
                     const speed = e.totalWH > 0 ? Math.round(e.totalLoad / e.totalWH) : 0;
                     const peakLoad = hourlyPeaks[e.nik] || 0;
                     
-                    // Determine Specialty
                     const ops = hourlyOpMap[e.nik];
                     let specialty = "General";
                     if (ops) {
@@ -700,10 +780,6 @@
                     return { ...e, avgScore, avgLoad, speed, peakLoad, specialty };
                 }).filter(e => e.avgLoad > 0);
 
-                const globalAvgLoad = employees.length ? (employees.reduce((acc, e) => acc + e.avgLoad, 0) / employees.length) : 0;
-                const globalAvgScore = employees.length ? (employees.reduce((acc, e) => acc + parseFloat(e.avgScore), 0) / employees.length) : 0;
-                const globalAvgSpeed = employees.length ? (employees.reduce((acc, e) => acc + e.speed, 0) / employees.length) : 0;
-
                 const top10Sorters = [...employees]
                     .sort((a, b) => parseFloat(b.avgScore) - parseFloat(a.avgScore) || b.avgLoad - a.avgLoad)
                     .slice(0, 10)
@@ -711,59 +787,39 @@
                         let reason = "Solid Performer";
                         let type = "Standard";
                         let color = "bg-gray-100 text-gray-700 border-gray-200";
-                        
                         const score = parseFloat(p.avgScore);
                         const load = p.avgLoad;
                         const speed = p.speed;
                         const peak = p.peakLoad;
+                        const globalAvgSpeed = employees.length ? (employees.reduce((acc, e) => acc + e.speed, 0) / employees.length) : 0;
+                        const globalAvgLoad = employees.length ? (employees.reduce((acc, e) => acc + e.avgLoad, 0) / employees.length) : 0;
 
-                        if (score >= 98 && peak > globalAvgSpeed * 2) {
-                            reason = `💎 MVP: Akurasi Tinggi & Tahan Peak (${peak} pcs/jam)`;
-                            color = "bg-purple-100 text-purple-700 border-purple-200";
-                        } else if (score >= 99) {
-                            reason = "🎯 Quality Master (Zero Error)";
-                            color = "bg-emerald-100 text-emerald-700 border-emerald-200";
-                        } else if (peak > globalAvgSpeed * 2.5) {
-                            reason = `🚀 Sprinter: Rekor Load ${peak.toLocaleString()} pcs/jam`;
-                            color = "bg-amber-100 text-amber-700 border-amber-200";
-                        } else if (speed > globalAvgSpeed * 1.5) {
-                            reason = "⚡ Speed Demon (Rata-rata Cepat)";
-                            color = "bg-orange-100 text-orange-700 border-orange-200";
-                        } else if (load > globalAvgLoad * 1.5) {
-                            reason = "🐎 Workhorse (Volume Harian Tinggi)";
-                            color = "bg-blue-100 text-blue-700 border-blue-200";
-                        } else if (score >= 95) {
-                            reason = "⭐ High Quality & Consistent";
-                            color = "bg-indigo-100 text-indigo-700 border-indigo-200";
-                        }
+                        if (score >= 98 && peak > globalAvgSpeed * 2) { reason = `💎 MVP: Akurasi Tinggi & Tahan Peak (${peak} pcs/jam)`; color = "bg-purple-100 text-purple-700 border-purple-200"; }
+                        else if (score >= 99) { reason = "🎯 Quality Master (Zero Error)"; color = "bg-emerald-100 text-emerald-700 border-emerald-200"; }
+                        else if (peak > globalAvgSpeed * 2.5) { reason = `🚀 Sprinter: Rekor Load ${peak.toLocaleString()} pcs/jam`; color = "bg-amber-100 text-amber-700 border-amber-200"; }
+                        else if (speed > globalAvgSpeed * 1.5) { reason = "⚡ Speed Demon (Rata-rata Cepat)"; color = "bg-orange-100 text-orange-700 border-orange-200"; }
+                        else if (load > globalAvgLoad * 1.5) { reason = "🐎 Workhorse (Volume Harian Tinggi)"; color = "bg-blue-100 text-blue-700 border-blue-200"; }
+                        else if (score >= 95) { reason = "⭐ High Quality & Consistent"; color = "bg-indigo-100 text-indigo-700 border-indigo-200"; }
 
                         return { ...p, reason, badgeColor: color };
                     });
 
                 const bottomPerformers = [...employees].sort((a, b) => parseFloat(a.avgScore) - parseFloat(b.avgScore)).slice(0, 5);
-                return { employees, globalAvgLoad, globalAvgScore, top10Sorters, bottomPerformers };
+                return { employees, top10Sorters, bottomPerformers };
             }, [filteredData, filteredHourlyData, activeTab]);
 
-            // --- NEW HELPERS FOR TOP 10 & HUB SUMMARY PER TAB ---
             const topSortersCurrentTab = useMemo(() => {
                 if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return [];
                 const sorterMap = {};
                 filteredData.forEach(row => {
                     if (!row.NIK) return;
-                    // Use dynamic keys based on activeTab
                     const loadKey = `LOAD ${activeTab}`;
                     const prdKey = `PRD ${activeTab} BY WH`;
-                    
-                    // Use helper for score
                     const score = getScoreValue(row, activeTab);
-
                     const load = cleanNumber(row[loadKey]);
                     const prd = cleanNumber(row[prdKey]);
-
                     if (load > 0 || prd > 0) { 
-                         if (!sorterMap[row.NIK]) {
-                            sorterMap[row.NIK] = { name: row.NAME, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
-                        }
+                         if (!sorterMap[row.NIK]) sorterMap[row.NIK] = { name: row.NAME, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
                         sorterMap[row.NIK].load += load;
                         sorterMap[row.NIK].prdSum += prd;
                         sorterMap[row.NIK].scoreSum += score;
@@ -771,11 +827,7 @@
                     }
                 });
                 return Object.values(sorterMap)
-                    .map(s => ({ 
-                        ...s, 
-                        avgPrd: s.count ? Math.round(s.prdSum / s.count) : 0,
-                        avgScore: s.count ? (s.scoreSum / s.count).toFixed(1) : 0 
-                    }))
+                    .map(s => ({ ...s, avgPrd: s.count ? Math.round(s.prdSum / s.count) : 0, avgScore: s.count ? (s.scoreSum / s.count).toFixed(1) : 0 }))
                     .sort((a, b) => b.load - a.load) 
                     .slice(0, 10);
             }, [filteredData, activeTab]);
@@ -787,13 +839,9 @@
                     const hub = row.HUB || 'Unknown';
                     const load = cleanNumber(row[`LOAD ${activeTab}`]);
                     const prd = cleanNumber(row[`PRD ${activeTab} BY WH`]);
-                    // Use helper for score
                     const score = getScoreValue(row, activeTab);
-
                     if (load > 0) {
-                        if (!hubMap[hub]) {
-                            hubMap[hub] = { name: hub, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
-                        }
+                        if (!hubMap[hub]) hubMap[hub] = { name: hub, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
                         hubMap[hub].load += load;
                         hubMap[hub].prdSum += prd;
                         hubMap[hub].scoreSum += score;
@@ -801,11 +849,7 @@
                     }
                 });
                 return Object.values(hubMap)
-                    .map(h => ({
-                        ...h,
-                        avgPrd: h.count ? Math.round(h.prdSum / h.count) : 0,
-                        avgScore: h.count ? (h.scoreSum / h.count).toFixed(1) : 0
-                    }))
+                    .map(h => ({ ...h, avgPrd: h.count ? Math.round(h.prdSum / h.count) : 0, avgScore: h.count ? (h.scoreSum / h.count).toFixed(1) : 0 }))
                     .sort((a, b) => b.load - a.load);
             }, [filteredData, activeTab]);
 
@@ -816,7 +860,6 @@
                     load: getMetricTotal(filteredData, `LOAD ${activeTab}`),
                     prdWh: getMetricAvg(filteredData, `PRD ${activeTab} BY WH`),
                     prdAttend: getMetricAvg(filteredData, `PRD ${activeTab} BY ATTENDANCE`),
-                    // Calculate Total Score using Helper map
                     scoring: filteredData.reduce((acc, curr) => acc + getScoreValue(curr, activeTab), 0)
                 };
             }, [filteredData, activeTab]);
@@ -1284,7 +1327,7 @@
                                                     <tr key={date} className="hover:bg-slate-50/50">
                                                         <td className="p-3 text-left font-medium text-slate-700 sticky left-0 bg-white z-10 border-r border-slate-50 shadow-sm">{date}</td>
                                                         {hourlyStats.hours.map(h => {
-                                                            const val = hourlyStats.pivotMap[date][h] || 0;
+                                                            const val = hourlyStats.pivotMap[date][h];
                                                             let bgClass = "text-slate-300";
                                                             if (val > 0) bgClass = "text-slate-600 font-medium bg-slate-50";
                                                             if (val > 500) bgClass = "text-teal-700 font-bold bg-teal-50";
@@ -1485,6 +1528,13 @@
                             </div>
                         ) : null}
                     </main>
+
+                    {/* FOOTER CREDIT */}
+                    <footer className="py-4 text-center border-t border-slate-200 mt-auto bg-white/50 backdrop-blur-sm">
+                        <p className="text-xs text-slate-400 font-medium">
+                            &copy; 2025 Dashboard Produktivitas. Developed by <span className="text-indigo-600 font-bold">@Gustiadi</span> - HUB Coordinator Kalsulamp
+                        </p>
+                    </footer>
                 </div>
             );
         }
