@@ -126,9 +126,13 @@
         const cleanNumber = (val) => {
             if (typeof val === 'number') return val;
             if (!val) return 0;
-            const strVal = String(val);
+            const strVal = String(val).trim();
             if (strVal.includes('%')) return parseFloat(strVal.replace('%', '').replace(',', '.'));
-            let cleanStr = strVal.replace(/,/g, ''); 
+            
+            // Format Indonesia: 1.500 -> 1500, 0,5 -> 0.5
+            let cleanStr = strVal.split('.').join('');
+            cleanStr = cleanStr.replace(',', '.');
+            
             return parseFloat(cleanStr) || 0;
         };
 
@@ -783,8 +787,19 @@
                     const prdAtt = cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`]);
                     const wh = cleanNumber(row[`WH ${activeTab}`]);
                     const score = getScoreValue(row, activeTab);
+                    
                     if (load > 0 || wh > 0) {
-                        if (!hubMap[hub]) hubMap[hub] = { name: hub, load: 0, wh: 0, prdWhSum: 0, prdAttSum: 0, scoreSum: 0, count: 0 };
+                        if (!hubMap[hub]) {
+                            hubMap[hub] = { 
+                                name: hub, 
+                                load: 0, 
+                                wh: 0,
+                                prdWhSum: 0,
+                                prdAttSum: 0,
+                                scoreSum: 0, 
+                                count: 0 
+                            };
+                        }
                         hubMap[hub].load += load;
                         hubMap[hub].wh += wh;
                         hubMap[hub].prdWhSum += prdWh;
