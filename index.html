@@ -43,8 +43,8 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
-<body class="text-slate-800 antialiased">
-    <div id="root"></div>
+<body class="text-slate-800 antialiased flex flex-col min-h-screen">
+    <div id="root" class="flex-grow flex flex-col"></div>
 
     <!-- FIREBASE SETUP -->
     <script type="module">
@@ -84,7 +84,7 @@
         } = window.Recharts || {};
 
         // --- CONFIG ---
-        const ADMIN_PASSWORD = "123";
+        const ADMIN_PASSWORD = "TAB";
 
         // --- ICONS ---
         const Icon = ({ path, className = "", size = 20, ...props }) => (
@@ -935,7 +935,6 @@
                     
                     <PasswordModal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} onConfirm={onPasswordVerified} />
                     <ConfirmationModal isOpen={showConfirmModal} onClose={() => setShowConfirmModal(false)} onConfirm={executeDelete} title="Hapus Data Bulan Ini" message={`Anda akan menghapus data bulan ${deleteMonth}. Aksi ini permanen.`} isProcessing={isResetting} />
-                    
                     <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-30 shadow-sm">
                         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1090,37 +1089,35 @@
                                         <StatCard title={`PRD ${activeTab} / WH`} value={currentStats.prdWh} sub="/ Jam" icon={Icons.Zap} colorClass="bg-amber-500 text-white" change={calculateChange(currentStats.prdWh, previousStats.prdWh)} isPositive={calculateChange(currentStats.prdWh, previousStats.prdWh) >= 0} />
                                         <StatCard title={`PRD ${activeTab} / ATT`} value={currentStats.prdAttend} sub="/ Orang" icon={Icons.Award} colorClass="bg-violet-600 text-white" change={calculateChange(currentStats.prdAttend, previousStats.prdAttend)} isPositive={calculateChange(currentStats.prdAttend, previousStats.prdAttend) >= 0} />
                                     </div>
-                                    
-                                    {/* GRID UTAMA: CHART + TOP 10 */}
-                                    <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                        {/* Chart - Takes 2 cols */}
-                                        <Card className="lg:col-span-2 p-6 bg-white border border-slate-100 shadow-sm">
-                                            <div className="flex items-center justify-between mb-8">
-                                                <h3 className="font-bold text-slate-800 text-lg">Analisa Tren Harian</h3>
-                                                <div className="flex gap-4 text-xs font-medium">
-                                                    <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Produktivitas</div>
-                                                    <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Volume Load</div>
-                                                </div>
+                                    <Card className="lg:col-span-4 p-6 bg-white border border-slate-100 shadow-sm">
+                                        <div className="flex items-center justify-between mb-8">
+                                            <h3 className="font-bold text-slate-800 text-lg">Analisa Tren Harian</h3>
+                                            <div className="flex gap-4 text-xs font-medium">
+                                                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Produktivitas</div>
+                                                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Volume Load</div>
                                             </div>
-                                            <div className="h-[320px]">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <ComposedChart data={chartData}>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                        <XAxis dataKey="date" style={{fontSize: '11px', fontFamily: 'Inter'}} stroke="#94a3b8" tickLine={false} axisLine={false} dy={10} />
-                                                        <YAxis yAxisId="left" orientation="left" hide={true} />
-                                                        <YAxis yAxisId="right" orientation="right" hide={true} />
-                                                        <Tooltip contentStyle={{borderRadius: '12px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}} cursor={{stroke: '#e2e8f0', strokeWidth: 1}} />
-                                                        <Bar yAxisId="right" dataKey="load" name="Volume Load" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20}>
-                                                            <LabelList dataKey="load" position="top" style={{ fill: '#10b981', fontSize: '10px', fontWeight: 'bold' }} />
-                                                        </Bar>
-                                                        <Line yAxisId="left" type="monotone" dataKey="avgPrd" name="Produktivitas" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#fff', strokeWidth:2, stroke:'#3b82f6'}} activeDot={{r: 6}}>
-                                                            <LabelList dataKey="avgPrd" position="top" offset={10} style={{ fill: '#3b82f6', fontSize: '10px', fontWeight: 'bold' }} />
-                                                        </Line>
-                                                    </ComposedChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        </Card>
+                                        </div>
+                                        <div className="h-[320px]">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <ComposedChart data={chartData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                    <XAxis dataKey="date" style={{fontSize: '11px', fontFamily: 'Inter'}} stroke="#94a3b8" tickLine={false} axisLine={false} dy={10} />
+                                                    <YAxis yAxisId="left" orientation="left" hide={true} />
+                                                    <YAxis yAxisId="right" orientation="right" hide={true} />
+                                                    <Tooltip contentStyle={{borderRadius: '12px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}} cursor={{stroke: '#e2e8f0', strokeWidth: 1}} />
+                                                    <Bar yAxisId="right" dataKey="load" name="Volume Load" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20}>
+                                                        <LabelList dataKey="load" position="top" style={{ fill: '#10b981', fontSize: '10px', fontWeight: 'bold' }} />
+                                                    </Bar>
+                                                    <Line yAxisId="left" type="monotone" dataKey="avgPrd" name="Produktivitas" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#fff', strokeWidth:2, stroke:'#3b82f6'}} activeDot={{r: 6}}>
+                                                        <LabelList dataKey="avgPrd" position="top" offset={10} style={{ fill: '#3b82f6', fontSize: '10px', fontWeight: 'bold' }} />
+                                                    </Line>
+                                                </ComposedChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </Card>
 
+                                    {/* Top 10 Sorter & HUB Summary Grid */}
+                                    <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
                                         {/* Top 10 Sorter - Takes 1 col */}
                                         <Card className="lg:col-span-1 overflow-hidden border border-indigo-100 bg-white flex flex-col h-full">
                                             <div className="p-4 border-b border-indigo-50 bg-indigo-50/20 flex justify-between items-center">
@@ -1153,15 +1150,13 @@
                                                 </table>
                                             </div>
                                         </Card>
-                                    </div>
 
-                                    {/* HUB Summary */}
-                                    <div className="lg:col-span-4">
-                                        <Card className="overflow-hidden border border-slate-100 bg-white">
+                                        {/* HUB Summary - Takes 2 cols */}
+                                        <Card className="lg:col-span-2 overflow-hidden border border-slate-100 bg-white flex flex-col h-full">
                                             <div className="p-4 border-b border-slate-50 bg-slate-50/50">
                                                 <h3 className="font-bold text-slate-800 text-sm uppercase">Rekapan Performa HUB: {activeTab}</h3>
                                             </div>
-                                            <div className="overflow-x-auto">
+                                            <div className="overflow-x-auto flex-1">
                                                 <div className="flex p-4 gap-4 min-w-max">
                                                     {hubSummaryCurrentTab.map((hub, idx) => (
                                                         <div key={idx} className="flex-none w-48 bg-white border border-slate-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
@@ -1186,25 +1181,24 @@
                                                             </div>
                                                         </div>
                                                     ))}
-                                                    {hubSummaryCurrentTab.length === 0 && <div className="text-slate-400 italic text-sm p-2">Tidak ada data HUB</div>}
+                                                    {hubSummaryCurrentTab.length === 0 && <div className="text-slate-400 italic text-sm p-4 w-full text-center">Tidak ada data HUB</div>}
                                                 </div>
                                             </div>
                                             
-                                            {/* HUB Summary Legend */}
-                                            <div className="p-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex flex-wrap gap-6 justify-center">
+                                            <div className="p-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex flex-wrap gap-6 justify-center mt-auto">
                                                  <div className="flex items-center gap-1.5">
                                                     <span className="font-bold text-slate-700">Total Load:</span>
-                                                    <span>Total volume paket yang diproses.</span>
+                                                    <span>Volume paket</span>
                                                  </div>
                                                  <div className="w-px h-3 bg-slate-300 hidden sm:block"></div>
                                                  <div className="flex items-center gap-1.5">
                                                     <span className="font-bold text-indigo-600">Avg Prd:</span>
-                                                    <span>Rata-rata kecepatan kerja tim (Pcs/Jam).</span>
+                                                    <span>Kecepatan (Pcs/Jam)</span>
                                                  </div>
                                                  <div className="w-px h-3 bg-slate-300 hidden sm:block"></div>
                                                  <div className="flex items-center gap-1.5">
                                                     <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">95</span>
-                                                    <span>= Rata-rata Skor Kualitas (Quality) Tim.</span>
+                                                    <span>= Skor Kualitas</span>
                                                  </div>
                                             </div>
                                         </Card>
@@ -1347,7 +1341,7 @@
                         ) : null}
                         {activeTab === 'ANALYSIS' && analysisStats ? (
                             <div className="space-y-6 animate-fade-in">
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 gap-6">
                                     <Card className="overflow-hidden border border-indigo-100 shadow-sm bg-white h-full flex flex-col">
                                         <div className="p-5 border-b border-indigo-50 bg-indigo-50/30 flex justify-between items-center"><h3 className="font-bold text-indigo-900 flex items-center gap-2"><Icons.Star size={18} className="text-amber-400" /> Top 10 Sorter (Rincian Performa)</h3><span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">Analisa Mendalam</span></div>
                                         <div className="overflow-x-auto flex-1">
