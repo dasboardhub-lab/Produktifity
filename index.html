@@ -244,6 +244,25 @@
             </div>
         );
 
+        // --- CUSTOMIZED DOT FOR LINE CHART ---
+        const CustomizedDot = (props) => {
+            const { cx, cy, stroke, value, maxVal, minVal } = props;
+            if (value === 0) return null;
+            if (value === maxVal) {
+                return (
+                    <circle cx={cx} cy={cy} r={6} stroke={stroke} strokeWidth={2} fill="#1e3a8a" />
+                );
+            }
+            if (value === minVal) {
+                return (
+                    <circle cx={cx} cy={cy} r={6} stroke={stroke} strokeWidth={2} fill="#ef4444" />
+                );
+            }
+            return (
+                <circle cx={cx} cy={cy} r={4} stroke={stroke} strokeWidth={2} fill="#fff" />
+            );
+        };
+
         const PasswordModal = ({ isOpen, onClose, onConfirm }) => {
             const [password, setPassword] = useState("");
             const [error, setError] = useState("");
@@ -764,19 +783,8 @@
                     const prdAtt = cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`]);
                     const wh = cleanNumber(row[`WH ${activeTab}`]);
                     const score = getScoreValue(row, activeTab);
-                    
                     if (load > 0 || wh > 0) {
-                        if (!hubMap[hub]) {
-                            hubMap[hub] = { 
-                                name: hub, 
-                                load: 0, 
-                                wh: 0,
-                                prdWhSum: 0,
-                                prdAttSum: 0,
-                                scoreSum: 0, 
-                                count: 0 
-                            };
-                        }
+                        if (!hubMap[hub]) hubMap[hub] = { name: hub, load: 0, wh: 0, prdWhSum: 0, prdAttSum: 0, scoreSum: 0, count: 0 };
                         hubMap[hub].load += load;
                         hubMap[hub].wh += wh;
                         hubMap[hub].prdWhSum += prdWh;
@@ -829,12 +837,32 @@
                     grouped[date].prd += cleanNumber(item[`PRD ${activeTab} BY WH`]);
                     grouped[date].count += 1;
                 });
+                // Calculate global min and max for chart coloring
+                const loads = Object.values(grouped).map(d => d.load).filter(l => l > 0);
+                const prds = Object.values(grouped).map(d => d.prd).filter(p => p > 0);
+                const maxLoad = Math.max(...loads, 0);
+                const minLoad = Math.min(...loads, Infinity);
+                const maxPrd = Math.max(...prds, 0);
+                const minPrd = Math.min(...prds, Infinity);
+
                 return Object.values(grouped).sort((a,b) => {
                      const [da, ma, ya] = a.date.split('/');
                      const [db, mb, yb] = b.date.split('/');
                      return new Date(`${ma}/${da}/${ya}`) - new Date(`${mb}/${db}/${yb}`);
-                }).map(g => ({ ...g, avgPrd: g.count ? Math.round(g.prd / g.count) : 0 }));
+                }).map(g => ({ 
+                    ...g, 
+                    avgPrd: g.count ? Math.round(g.prd / g.count) : 0,
+                    // Pass min/max info to data point for custom rendering
+                    isMaxLoad: g.load === maxLoad,
+                    isMinLoad: g.load === minLoad,
+                    isMaxPrd: (g.count ? Math.round(g.prd / g.count) : 0) === maxPrd, // Need to compare avg
+                    isMinPrd: (g.count ? Math.round(g.prd / g.count) : 0) === minPrd
+                }));
             }, [filteredData, activeTab]);
+
+            // Recalculate max/min avgPrd for correct dot coloring
+            const maxAvgPrd = useMemo(() => Math.max(...chartData.map(d => d.avgPrd).filter(v => v > 0), 0), [chartData]);
+            const minAvgPrd = useMemo(() => Math.min(...chartData.map(d => d.avgPrd).filter(v => v > 0), Infinity), [chartData]);
 
             const totalScoringSum = filteredData.reduce((acc, curr) => acc + getScoreValue(curr, 'TOTAL'), 0);
             const prevTotalScoringSum = previousFilteredData.reduce((acc, curr) => acc + getScoreValue(curr, 'TOTAL'), 0);
@@ -1051,9 +1079,14 @@
                                                     <YAxis yAxisId="right" orientation="right" hide={true} />
                                                     <Tooltip contentStyle={{borderRadius: '12px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}} cursor={{stroke: '#e2e8f0', strokeWidth: 1}} />
                                                     <Bar yAxisId="right" dataKey="load" name="Volume Load" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20}>
+                                                        {chartData.map((entry, index) => (
+                                                            <Cell key={`cell-${index}`} fill={entry.isMaxLoad ? '#064e3b' : entry.isMinLoad ? '#fbbf24' : '#10b981'} />
+                                                        ))}
                                                         <LabelList dataKey="load" position="top" style={{ fill: '#10b981', fontSize: '10px', fontWeight: 'bold' }} />
                                                     </Bar>
-                                                    <Line yAxisId="left" type="monotone" dataKey="avgPrd" name="Produktivitas" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#fff', strokeWidth:2, stroke:'#3b82f6'}} activeDot={{r: 6}}>
+                                                    <Line yAxisId="left" type="monotone" dataKey="avgPrd" name="Produktivitas" stroke="#3b82f6" strokeWidth={3} 
+                                                        dot={<CustomizedDot maxVal={maxAvgPrd} minVal={minAvgPrd} />} 
+                                                        activeDot={{r: 6}}>
                                                         <LabelList dataKey="avgPrd" position="top" offset={10} style={{ fill: '#3b82f6', fontSize: '10px', fontWeight: 'bold' }} />
                                                     </Line>
                                                 </ComposedChart>
