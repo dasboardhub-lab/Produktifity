@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas</title>
+    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -84,7 +84,7 @@
         } = window.Recharts || {};
 
         // --- CONFIG ---
-        const ADMIN_PASSWORD = "TAB";
+        const ADMIN_PASSWORD = "123";
 
         // --- ICONS ---
         const Icon = ({ path, className = "", size = 20, ...props }) => (
@@ -244,53 +244,31 @@
             </div>
         );
 
-        // --- PASSWORD MODAL ---
         const PasswordModal = ({ isOpen, onClose, onConfirm }) => {
             const [password, setPassword] = useState("");
             const [error, setError] = useState("");
             const inputRef = useRef(null);
-
             useEffect(() => {
-                if (isOpen) {
-                    setPassword("");
-                    setError("");
-                    setTimeout(() => inputRef.current?.focus(), 100);
-                }
+                if (isOpen) { setPassword(""); setError(""); setTimeout(() => inputRef.current?.focus(), 100); }
             }, [isOpen]);
-
             const handleSubmit = (e) => {
                 e.preventDefault();
-                if (password === ADMIN_PASSWORD) {
-                    onConfirm();
-                    onClose();
-                } else {
-                    setError("Password salah! Silakan coba lagi.");
-                }
+                if (password === ADMIN_PASSWORD) { onConfirm(); onClose(); } 
+                else { setError("Password salah! Silakan coba lagi."); }
             };
-
             if (!isOpen) return null;
-
             return (
                 <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity animate-fade-in">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all scale-100 p-6 relative">
                         <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><Icons.XCircle size={20}/></button>
                         <div className="text-center mb-6">
-                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-slate-100 mb-4">
-                                <Icons.Lock className="h-6 w-6 text-slate-600" />
-                            </div>
+                            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-slate-100 mb-4"><Icons.Lock className="h-6 w-6 text-slate-600" /></div>
                             <h3 className="text-lg font-bold text-slate-900">Verifikasi Keamanan</h3>
                             <p className="text-sm text-slate-500">Masukkan password untuk melanjutkan aksi ini.</p>
                         </div>
                         <form onSubmit={handleSubmit} className="space-y-4">
                             <div>
-                                <input 
-                                    ref={inputRef}
-                                    type="password" 
-                                    value={password}
-                                    onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-center tracking-widest text-lg"
-                                    placeholder="••••••"
-                                />
+                                <input ref={inputRef} type="password" value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }} className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all text-center tracking-widest text-lg" placeholder="••••••" />
                                 {error && <p className="text-red-500 text-xs mt-2 text-center">{error}</p>}
                             </div>
                             <div className="flex gap-3">
@@ -377,18 +355,14 @@
             const formatDateInput = (date) => date.toISOString().split('T')[0];
             const [startDate, setStartDate] = useState(formatDateInput(thirtyDaysAgo));
             const [endDate, setEndDate] = useState(formatDateInput(today));
-            
-            // Password & Modal States
             const [deleteMonth, setDeleteMonth] = useState("");
             const [showConfirmModal, setShowConfirmModal] = useState(false);
             const [showPasswordModal, setShowPasswordModal] = useState(false);
-            const [pendingPayload, setPendingPayload] = useState(null); // { type: 'daily'|'hourly'|'delete', file: File }
+            const [pendingPayload, setPendingPayload] = useState(null); 
 
             const [searchTerm, setSearchTerm] = useState("");
             const [notifyState, setNotifyState] = useState({ status: 'idle', message: '', visible: false });
             const [user, setUser] = useState(null);
-            
-            // Loading States
             const [isUploading, setIsUploading] = useState(false);
             const [isUploadingHourly, setIsUploadingHourly] = useState(false);
             const [isResetting, setIsResetting] = useState(false);
@@ -437,13 +411,12 @@
                 return () => { unsubscribe(); unsubscribeHourly(); };
             }, [user]);
 
-            // --- EVENT HANDLERS (Initiators) ---
             const initFileUpload = (event) => {
                 const file = event.target.files[0];
                 if (!file || !user) return;
                 setPendingPayload({ type: 'daily', file });
                 setShowPasswordModal(true);
-                event.target.value = null; // Reset input so it can be selected again
+                event.target.value = null; 
             };
 
             const initHourlyUpload = (event) => {
@@ -460,38 +433,25 @@
                 setShowPasswordModal(true);
             };
 
-            // --- PASSWORD CONFIRMATION HANDLER ---
             const onPasswordVerified = () => {
                 setShowPasswordModal(false);
                 if (!pendingPayload) return;
-
-                if (pendingPayload.type === 'daily') {
-                    processDailyUpload(pendingPayload.file);
-                } else if (pendingPayload.type === 'hourly') {
-                    processHourlyUpload(pendingPayload.file);
-                } else if (pendingPayload.type === 'delete') {
-                    setShowConfirmModal(true);
-                }
+                if (pendingPayload.type === 'daily') processDailyUpload(pendingPayload.file);
+                else if (pendingPayload.type === 'hourly') processHourlyUpload(pendingPayload.file);
+                else if (pendingPayload.type === 'delete') setShowConfirmModal(true);
                 setPendingPayload(null);
             };
 
-            // --- PROCESSORS ---
             const processDailyUpload = (file) => {
                 setIsUploading(true);
                 showNotification('loading', 'Mengupload Data...', false);
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const parsedData = parseCSV(e.target.result);
-                    if (parsedData.length === 0) { 
-                        showNotification('error', "File kosong."); 
-                        setIsUploading(false);
-                        return; 
-                    }
-                    
+                    if (parsedData.length === 0) { showNotification('error', "File kosong."); setIsUploading(false); return; }
                     const existingIDs = new Set(data.map(d => d.__docId));
                     const finalRowsToUpload = [];
                     let duplicates = 0;
-
                     parsedData.forEach(row => {
                         if (!row.TANGGAL || !row.NIK) return; 
                         const dateKey = row.TANGGAL.replace(/\//g, '-');
@@ -500,21 +460,10 @@
                         let jamMasuk = row[jamMasukKey] || '00:00';
                         const safeJamMasuk = String(jamMasuk).replace(/:/g, '').replace(/\s/g, '');
                         const docId = `${dateKey}_${nikKey}_${safeJamMasuk}`;
-                        
-                        if (existingIDs.has(docId)) {
-                            duplicates++;
-                        } else {
-                            row._tempId = docId;
-                            finalRowsToUpload.push(row);
-                        }
+                        if (existingIDs.has(docId)) { duplicates++; } 
+                        else { row._tempId = docId; finalRowsToUpload.push(row); }
                     });
-
-                    if (finalRowsToUpload.length === 0) {
-                        showNotification('success', `Selesai. ${duplicates} duplikat dilewati.`);
-                        setIsUploading(false);
-                        return;
-                    }
-
+                    if (finalRowsToUpload.length === 0) { showNotification('success', `Selesai. ${duplicates} duplikat dilewati.`); setIsUploading(false); return; }
                     const batchSize = 400; const chunks = [];
                     for (let i = 0; i < finalRowsToUpload.length; i += batchSize) chunks.push(finalRowsToUpload.slice(i, i + batchSize));
                     try {
@@ -541,73 +490,46 @@
                 const reader = new FileReader();
                 reader.onload = async (e) => {
                     const parsedData = parseCSV(e.target.result);
-                    if (parsedData.length === 0) { 
-                        showNotification('error', "File kosong."); 
-                        setIsUploadingHourly(false);
-                        return; 
-                    }
+                    if (parsedData.length === 0) { showNotification('error', "File kosong."); setIsUploadingHourly(false); return; }
                     const findKey = (row, keywords) => Object.keys(row).find(key => keywords.some(k => key.toLowerCase().includes(k)));
-                    
                     const existingIDs = new Set(hourlyData.map(d => d.__docId));
                     const finalRowsToUpload = [];
                     let duplicates = 0;
-
                     parsedData.forEach(row => {
                         const jamKey = findKey(row, ['jam', 'hour', 'time', 'waktu', 'pukul']);
                         const loadKey = findKey(row, ['load', 'total', 'qty', 'volume', 'parcel', 'paket']);
                         const dateKey = findKey(row, ['tanggal', 'date', 'tgl']);
                         const nikKeyFound = findKey(row, ['nik', 'id', 'user']);
                         const hubKey = findKey(row, ['hub', 'cabang', 'station', 'lokasi']);
-                        const nameKey = findKey(row, ['name', 'nama', 'karyawan', 'employee', 'pic']);
-                        
+                        const nameKey = findKey(row, ['name', 'nama']);
                         const jamRaw = row[jamKey] || row.TIME || row.JAM;
                         const loadRaw = row[loadKey] || row['Total Parcel'] || row.LOAD;
                         const tanggal = row[dateKey] || row.TANGGAL || 'GENERAL';
                         const nik = row[nikKeyFound] || row.NIK || 'GENERAL';
                         const hub = row[hubKey] || row.HUB || '';
                         const name = row[nameKey] || row.NAME || '';
-
                         let jam = jamRaw;
                         if (jam && typeof jam === 'string' && jam.includes('-')) {
                              jam = jam.split('-')[0].trim().replace('.', ':');
                              if(jam.length === 4 && jam.indexOf(':') === -1) jam = jam.substring(0,2) + ":" + jam.substring(2);
                         }
-
                         if (jam && loadRaw !== undefined) {
                             const safeDate = String(tanggal).replace(/\//g, '-');
                             const safeJam = String(jam).replace(/:/g, '').replace('.', '');
                             const safeNik = String(nik).trim();
                             const docId = `${safeDate}_${safeNik}_${safeJam}`;
-                            
-                            if (existingIDs.has(docId)) {
-                                duplicates++;
-                            } else {
+                            if (existingIDs.has(docId)) { duplicates++; } 
+                            else {
                                 const finalLoad = cleanNumber(loadRaw);
-                                const saveData = {
-                                    JAM: jam,
-                                    LOAD: finalLoad,
-                                    TANGGAL: tanggal,
-                                    NIK: nik,
-                                    HUB: hub,
-                                    NAME: name,
-                                    _tempId: docId
-                                };
+                                const saveData = { JAM: jam, LOAD: finalLoad, TANGGAL: tanggal, NIK: nik, HUB: hub, NAME: name, _tempId: docId };
                                 Object.keys(row).forEach(k => {
-                                    if (!['TANGGAL', 'NIK', 'NAME', 'HUB', 'TIME', 'JAM', 'LOAD', 'Total Parcel', 'Idle'].includes(k)) {
-                                        saveData[k] = cleanNumber(row[k]);
-                                    }
+                                    if (!['TANGGAL', 'NIK', 'NAME', 'HUB', 'TIME', 'JAM', 'LOAD', 'Total Parcel', 'Idle'].includes(k)) { saveData[k] = cleanNumber(row[k]); }
                                 });
                                 finalRowsToUpload.push(saveData);
                             }
                         }
                     });
-
-                    if (finalRowsToUpload.length === 0) {
-                        showNotification('success', `Selesai. ${duplicates} duplikat dilewati.`);
-                        setIsUploadingHourly(false);
-                        return;
-                    }
-
+                    if (finalRowsToUpload.length === 0) { showNotification('success', `Selesai. ${duplicates} duplikat dilewati.`); setIsUploadingHourly(false); return; }
                     const batchSize = 400; const chunks = [];
                     for (let i = 0; i < finalRowsToUpload.length; i += batchSize) chunks.push(finalRowsToUpload.slice(i, i + batchSize));
                     try {
@@ -838,18 +760,39 @@
                 filteredData.forEach(row => {
                     const hub = row.HUB || 'Unknown';
                     const load = cleanNumber(row[`LOAD ${activeTab}`]);
-                    const prd = cleanNumber(row[`PRD ${activeTab} BY WH`]);
+                    const prdWh = cleanNumber(row[`PRD ${activeTab} BY WH`]);
+                    const prdAtt = cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`]);
+                    const wh = cleanNumber(row[`WH ${activeTab}`]);
                     const score = getScoreValue(row, activeTab);
-                    if (load > 0) {
-                        if (!hubMap[hub]) hubMap[hub] = { name: hub, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
+                    
+                    if (load > 0 || wh > 0) {
+                        if (!hubMap[hub]) {
+                            hubMap[hub] = { 
+                                name: hub, 
+                                load: 0, 
+                                wh: 0,
+                                prdWhSum: 0,
+                                prdAttSum: 0,
+                                scoreSum: 0, 
+                                count: 0 
+                            };
+                        }
                         hubMap[hub].load += load;
-                        hubMap[hub].prdSum += prd;
+                        hubMap[hub].wh += wh;
+                        hubMap[hub].prdWhSum += prdWh;
+                        hubMap[hub].prdAttSum += prdAtt;
                         hubMap[hub].scoreSum += score;
                         hubMap[hub].count += 1;
                     }
                 });
                 return Object.values(hubMap)
-                    .map(h => ({ ...h, avgPrd: h.count ? Math.round(h.prdSum / h.count) : 0, avgScore: h.count ? (h.scoreSum / h.count).toFixed(1) : 0 }))
+                    .map(h => ({
+                        ...h,
+                        avgPrdWh: h.count ? Math.round(h.prdWhSum / h.count) : 0,
+                        avgPrdAtt: h.count ? Math.round(h.prdAttSum / h.count) : 0,
+                        avgScore: h.count ? (h.scoreSum / h.count).toFixed(1) : 0,
+                        totalWH: h.wh.toFixed(1)
+                    }))
                     .sort((a, b) => b.load - a.load);
             }, [filteredData, activeTab]);
 
@@ -1089,6 +1032,8 @@
                                         <StatCard title={`PRD ${activeTab} / WH`} value={currentStats.prdWh} sub="/ Jam" icon={Icons.Zap} colorClass="bg-amber-500 text-white" change={calculateChange(currentStats.prdWh, previousStats.prdWh)} isPositive={calculateChange(currentStats.prdWh, previousStats.prdWh) >= 0} />
                                         <StatCard title={`PRD ${activeTab} / ATT`} value={currentStats.prdAttend} sub="/ Orang" icon={Icons.Award} colorClass="bg-violet-600 text-white" change={calculateChange(currentStats.prdAttend, previousStats.prdAttend)} isPositive={calculateChange(currentStats.prdAttend, previousStats.prdAttend) >= 0} />
                                     </div>
+                                    
+                                    {/* GRID UTAMA: CHART FULL WIDTH */}
                                     <Card className="lg:col-span-4 p-6 bg-white border border-slate-100 shadow-sm">
                                         <div className="flex items-center justify-between mb-8">
                                             <h3 className="font-bold text-slate-800 text-lg">Analisa Tren Harian</h3>
@@ -1115,93 +1060,88 @@
                                             </ResponsiveContainer>
                                         </div>
                                     </Card>
-
-                                    {/* Top 10 Sorter & HUB Summary Grid */}
-                                    <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-                                        {/* Top 10 Sorter - Takes 1 col */}
-                                        <Card className="lg:col-span-1 overflow-hidden border border-indigo-100 bg-white flex flex-col h-full">
-                                            <div className="p-4 border-b border-indigo-50 bg-indigo-50/20 flex justify-between items-center">
-                                                <h3 className="font-bold text-slate-800 text-sm uppercase flex items-center gap-2">
-                                                    <Icons.Star size={16} className="text-amber-400" /> Top 10 {activeTab}
-                                                </h3>
-                                            </div>
-                                            <div className="overflow-auto flex-1 max-h-[320px]">
-                                                <table className="w-full text-xs text-left">
-                                                    <thead className="text-slate-400 bg-slate-50 uppercase tracking-wider font-semibold sticky top-0 z-10">
-                                                        <tr>
-                                                            <th className="px-4 py-2 w-8 text-center">#</th>
-                                                            <th className="px-4 py-2">Nama</th>
-                                                            <th className="px-4 py-2 text-right">Load</th>
-                                                            <th className="px-4 py-2 text-right">Prd</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-slate-50">
-                                                        {topSortersCurrentTab.length > 0 ? topSortersCurrentTab.map((s, idx) => (
-                                                            <tr key={idx} className="hover:bg-indigo-50/30">
-                                                                <td className="px-4 py-2 text-center font-bold text-slate-300">{idx + 1}</td>
-                                                                <td className="px-4 py-2 font-medium text-slate-700 truncate max-w-[120px]">{s.name}</td>
-                                                                <td className="px-4 py-2 text-right font-bold text-emerald-600">{s.load.toLocaleString()}</td>
-                                                                <td className="px-4 py-2 text-right font-medium text-indigo-600">{s.avgPrd}</td>
-                                                            </tr>
-                                                        )) : (
-                                                            <tr><td colSpan="4" className="p-8 text-center text-slate-400 italic">Belum ada data</td></tr>
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </Card>
-
-                                        {/* HUB Summary - Takes 2 cols */}
-                                        <Card className="lg:col-span-2 overflow-hidden border border-slate-100 bg-white flex flex-col h-full">
-                                            <div className="p-4 border-b border-slate-50 bg-slate-50/50">
-                                                <h3 className="font-bold text-slate-800 text-sm uppercase">Rekapan Performa HUB: {activeTab}</h3>
-                                            </div>
-                                            <div className="overflow-x-auto flex-1">
-                                                <div className="flex p-4 gap-4 min-w-max">
-                                                    {hubSummaryCurrentTab.map((hub, idx) => (
-                                                        <div key={idx} className="flex-none w-48 bg-white border border-slate-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                                                            <div className="flex justify-between items-start mb-3">
-                                                                <span className="font-bold text-slate-800 text-sm">{hub.name}</span>
-                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${parseFloat(hub.avgScore) >= 90 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                                    {hub.avgScore}
-                                                                </span>
-                                                            </div>
-                                                            <div className="space-y-2">
-                                                                <div className="flex justify-between text-xs">
-                                                                    <span className="text-slate-400">Total Load</span>
-                                                                    <span className="font-bold text-slate-700">{hub.load.toLocaleString()}</span>
-                                                                </div>
-                                                                <div className="w-full bg-slate-100 rounded-full h-1.5">
-                                                                    <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
-                                                                </div>
-                                                                <div className="flex justify-between text-xs pt-1">
-                                                                    <span className="text-slate-400">Avg Prd</span>
-                                                                    <span className="font-bold text-indigo-600">{hub.avgPrd} <span className="text-[9px] font-normal text-slate-400">/hr</span></span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                    {hubSummaryCurrentTab.length === 0 && <div className="text-slate-400 italic text-sm p-4 w-full text-center">Tidak ada data HUB</div>}
+                                    
+                                    {/* GRID BAWAH: TOP 10 (35%) & HUB SUMMARY (65%) */}
+                                    <div className="lg:col-span-4 flex flex-col lg:flex-row gap-6">
+                                        {/* Top 10 Sorter - Takes ~35% */}
+                                        <div className="w-full lg:w-[35%] flex flex-col">
+                                            <Card className="flex flex-col h-full overflow-hidden border border-indigo-100 bg-white">
+                                                <div className="p-4 border-b border-indigo-50 bg-indigo-50/20 flex justify-between items-center">
+                                                    <h3 className="font-bold text-slate-800 text-sm uppercase flex items-center gap-2">
+                                                        <Icons.Star size={16} className="text-amber-400" /> Top 10 {activeTab}
+                                                    </h3>
                                                 </div>
-                                            </div>
-                                            
-                                            <div className="p-3 bg-slate-50 border-t border-slate-200 text-[11px] text-slate-500 flex flex-wrap gap-6 justify-center mt-auto">
-                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-slate-700">Total Load:</span>
-                                                    <span>Volume paket</span>
-                                                 </div>
-                                                 <div className="w-px h-3 bg-slate-300 hidden sm:block"></div>
-                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="font-bold text-indigo-600">Avg Prd:</span>
-                                                    <span>Kecepatan (Pcs/Jam)</span>
-                                                 </div>
-                                                 <div className="w-px h-3 bg-slate-300 hidden sm:block"></div>
-                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[9px] font-bold">95</span>
-                                                    <span>= Skor Kualitas</span>
-                                                 </div>
-                                            </div>
-                                        </Card>
+                                                <div className="overflow-auto flex-1 max-h-[320px]">
+                                                    <table className="w-full text-xs text-left">
+                                                        <thead className="text-slate-400 bg-slate-50 uppercase tracking-wider font-semibold sticky top-0 z-10">
+                                                            <tr>
+                                                                <th className="px-4 py-2 w-8 text-center">#</th>
+                                                                <th className="px-4 py-2">Nama</th>
+                                                                <th className="px-4 py-2 text-right">Load</th>
+                                                                <th className="px-4 py-2 text-right">Prd</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-50">
+                                                            {topSortersCurrentTab.length > 0 ? topSortersCurrentTab.map((s, idx) => (
+                                                                <tr key={idx} className="hover:bg-indigo-50/30">
+                                                                    <td className="px-4 py-2 text-center font-bold text-slate-300">{idx + 1}</td>
+                                                                    <td className="px-4 py-2 font-medium text-slate-700 truncate max-w-[120px]">{s.name}</td>
+                                                                    <td className="px-4 py-2 text-right font-bold text-emerald-600">{s.load.toLocaleString()}</td>
+                                                                    <td className="px-4 py-2 text-right font-medium text-indigo-600">{s.avgPrd}</td>
+                                                                </tr>
+                                                            )) : (
+                                                                <tr><td colSpan="4" className="p-8 text-center text-slate-400 italic">Belum ada data</td></tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </Card>
+                                        </div>
+
+                                        {/* HUB Summary - Takes ~65% */}
+                                        <div className="w-full lg:w-[65%] flex flex-col">
+                                            <Card className="flex flex-col h-full overflow-hidden border border-slate-100 bg-white">
+                                                <div className="p-4 border-b border-slate-50 bg-slate-50/50">
+                                                    <h3 className="font-bold text-slate-800 text-sm uppercase">Rekapan Performa HUB: {activeTab}</h3>
+                                                </div>
+                                                <div className="overflow-x-auto flex-1">
+                                                    <table className="w-full text-left text-xs whitespace-nowrap">
+                                                        <thead className="bg-slate-50 text-slate-500 font-semibold uppercase tracking-wider sticky top-0 z-10">
+                                                            <tr>
+                                                                <th className="px-6 py-4">Nama HUB</th>
+                                                                <th className="px-6 py-4 text-center">Avg Score</th>
+                                                                <th className="px-6 py-4 text-right">Total WH</th>
+                                                                <th className="px-6 py-4 text-right">Total Load</th>
+                                                                <th className="px-6 py-4 text-right">Avg Prd/Wh</th>
+                                                                <th className="px-6 py-4 text-right">Avg Prd/Att</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-slate-50">
+                                                            {hubSummaryCurrentTab.length > 0 ? hubSummaryCurrentTab.map((hub, idx) => (
+                                                                <tr key={idx} className="hover:bg-blue-50/50 transition-colors duration-150">
+                                                                    <td className="px-6 py-3 font-medium text-slate-900">{hub.name}</td>
+                                                                    <td className="px-6 py-3 text-center">
+                                                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${parseFloat(hub.avgScore) >= 90 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                            {hub.avgScore}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td className="px-6 py-3 text-right text-slate-600">{hub.totalWH}</td>
+                                                                    <td className="px-6 py-3 text-right font-medium text-slate-900">{hub.load.toLocaleString()}</td>
+                                                                    <td className={`px-6 py-3 text-right font-bold ${hub.avgPrdWh >= (hub.avgTarget || 0) ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                        {hub.avgPrdWh.toLocaleString()}
+                                                                    </td>
+                                                                    <td className={`px-6 py-3 text-right font-bold ${hub.avgPrdAtt >= (hub.avgTarget || 0) ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                        {hub.avgPrdAtt.toLocaleString()}
+                                                                    </td>
+                                                                </tr>
+                                                            )) : (
+                                                                <tr><td colSpan="6" className="p-8 text-center text-slate-400 italic">Tidak ada data HUB</td></tr>
+                                                            )}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </Card>
+                                        </div>
                                     </div>
 
                                     <Card className="lg:col-span-4 overflow-hidden border border-slate-100 bg-white">
