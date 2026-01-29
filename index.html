@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
+    <title>Dashboard Produktivitas 2025</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -116,7 +116,6 @@
             AlertTriangle: (props) => <Icon {...props} path={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></>} />,
             TrendUp: (props) => <Icon {...props} path={<><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></>} />,
             TrendDown: (props) => <Icon {...props} path={<><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></>} />,
-            Home: (props) => <Icon {...props} path={<><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></>} />,
         };
 
         // --- GLOBAL HELPERS ---
@@ -148,6 +147,49 @@
             const parts = dateStr.split('/');
             if (parts.length !== 3) return null;
             return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`); 
+        };
+
+        // --- ROBUST SCORE GETTER ---
+        // Mencari kolom skor dengan prioritas yang lebih luas
+        const getScoreValue = (row, category) => {
+            if (!row) return 0;
+            
+            // Definisikan kata kunci pencarian berdasarkan kategori
+            let keywords = [];
+            
+            if (category === 'TOTAL') {
+                // Prioritas untuk Total Scoring
+                keywords = ['TOTAL SCORING', 'SCORING TOTAL', 'TOTAL SCORE', 'TOTAL ACH', 'ACHIEVEMENT TOTAL'];
+            } else if (category === 'PRIM/SEC') {
+                keywords = ['SCORING PRIM/SECOND', 'PRIM/SEC ACH BY WH', 'PRIM/SEC SCORING'];
+            } else {
+                keywords = [`SCORING ${category}`, `${category} ACH BY WH`, `${category} SCORE`, `${category} SCORING`];
+            }
+
+            // 1. Coba pencarian Exact Match dari keywords
+            for (const key of keywords) {
+                if (row[key] !== undefined) return cleanNumber(row[key]);
+            }
+
+            // 2. Coba pencarian Fuzzy (Case Insensitive & Partial Match) pada keys object row
+            const rowKeys = Object.keys(row);
+            for (const searchKey of keywords) {
+                const foundKey = rowKeys.find(k => k.toUpperCase().includes(searchKey.toUpperCase()));
+                if (foundKey) return cleanNumber(row[foundKey]);
+            }
+
+            // 3. Fallback Khusus untuk "ACH BY WH" jika pencarian spesifik gagal
+            // Mencari kolom apa saja yang mengandung "ACH BY WH" dan nama kategori
+            if (category !== 'TOTAL') {
+                const fallbackKey = rowKeys.find(k => 
+                    k.toUpperCase().includes(category.toUpperCase()) && 
+                    k.toUpperCase().includes('ACH') && 
+                    k.toUpperCase().includes('WH')
+                );
+                if (fallbackKey) return cleanNumber(row[fallbackKey]);
+            }
+
+            return 0;
         };
 
         const parseCSV = (text) => {
@@ -272,7 +314,6 @@
             { id: 'ANALYSIS', label: 'Analisa Lanjutan', color: 'text-pink-600 bg-pink-100', isSpecial: true, icon: Icons.Brain },
         ];
 
-        // --- OPCODE CONFIG ---
         const OPCODE_GROUPS = [
             { name: 'Inbound', color: 'bg-blue-50 text-blue-700 border-blue-200', codes: ['43 in', '31 in', '45 in', '619 in', '41 in', '83 in', '84 in', '207 in'] },
             { name: 'Outbound', color: 'bg-green-50 text-green-700 border-green-200', codes: ['30 out', '640 out', '82 out', '201 out', '209 out', '643 out'] },
@@ -417,19 +458,12 @@
                                 const nikKeyFound = findKey(row, ['nik', 'id', 'user']);
                                 const hubKey = findKey(row, ['hub', 'cabang', 'station', 'lokasi']);
                                 const nameKey = findKey(row, ['name', 'nama', 'karyawan', 'employee', 'pic']);
-                                
-                                const jamRaw = row[jamKey] || row.TIME || row.JAM;
-                                const loadRaw = row[loadKey] || row['Total Parcel'] || row.LOAD;
+                                const jam = row[jamKey] || row.JAM;
+                                const loadRaw = row[loadKey] || row.LOAD;
                                 const tanggal = row[dateKey] || row.TANGGAL || 'GENERAL';
                                 const nik = row[nikKeyFound] || row.NIK || 'GENERAL';
                                 const hub = row[hubKey] || row.HUB || '';
                                 const name = row[nameKey] || row.NAME || '';
-
-                                let jam = jamRaw;
-                                if (jam && typeof jam === 'string' && jam.includes('-')) {
-                                     jam = jam.split('-')[0].trim().replace('.', ':');
-                                     if(jam.length === 4 && jam.indexOf(':') === -1) jam = jam.substring(0,2) + ":" + jam.substring(2);
-                                }
 
                                 if (jam && loadRaw !== undefined) {
                                     const safeDate = String(tanggal).replace(/\//g, '-');
@@ -559,29 +593,18 @@
                 });
             }, [data, filterHub, startDate, endDate]);
 
-            // UPDATED: filteredHourlyData now respects HUB and SearchTerm (Name/NIK)
             const filteredHourlyData = useMemo(() => {
                 let res = hourlyData;
-                
-                // 1. Date Range
                 if (startDate || endDate) {
                     res = res.filter(d => d.TANGGAL ? isDateInRange(d.TANGGAL) : true);
                 }
-
-                // 2. Hub Filter
                 if (filterHub !== "All") {
                     res = res.filter(d => d.HUB && d.HUB === filterHub);
                 }
-
-                // 3. Search Filter (Name or NIK)
                 if (searchTerm) {
                     const term = searchTerm.toLowerCase();
-                    res = res.filter(d => 
-                        (d.NAME && d.NAME.toLowerCase().includes(term)) || 
-                        (d.NIK && String(d.NIK).toLowerCase().includes(term))
-                    );
+                    res = res.filter(d => (d.NAME && d.NAME.toLowerCase().includes(term)) || (d.NIK && String(d.NIK).toLowerCase().includes(term)));
                 }
-
                 return res.sort((a,b) => (a.JAM || '').localeCompare(b.JAM || ''));
             }, [hourlyData, startDate, endDate, filterHub, searchTerm]);
 
@@ -618,7 +641,8 @@
                     let wh = cleanNumber(item['WH TOTAL']);
                     if (wh === 0) wh = cleanNumber(item['WH INBOUND']) + cleanNumber(item['WH OUTBOUND']);
 
-                    const score = cleanNumber(item['TOTAL SCORING']) || 0;
+                    // Use updated scoring logic
+                    const score = getScoreValue(item, 'TOTAL') || 0; // Use helper function
                     
                     employeeMap[nik].totalLoad += load;
                     employeeMap[nik].totalWH += wh;
@@ -729,13 +753,14 @@
                     // Use dynamic keys based on activeTab
                     const loadKey = `LOAD ${activeTab}`;
                     const prdKey = `PRD ${activeTab} BY WH`;
-                    const scoreKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
+                    
+                    // Use helper for score
+                    const score = getScoreValue(row, activeTab);
 
                     const load = cleanNumber(row[loadKey]);
                     const prd = cleanNumber(row[prdKey]);
-                    const score = cleanNumber(row[scoreKey]);
 
-                    if (load > 0 || prd > 0) { // Only count if there is activity
+                    if (load > 0 || prd > 0) { 
                          if (!sorterMap[row.NIK]) {
                             sorterMap[row.NIK] = { name: row.NAME, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
                         }
@@ -751,7 +776,7 @@
                         avgPrd: s.count ? Math.round(s.prdSum / s.count) : 0,
                         avgScore: s.count ? (s.scoreSum / s.count).toFixed(1) : 0 
                     }))
-                    .sort((a, b) => b.load - a.load) // Sort by Volume High to Low
+                    .sort((a, b) => b.load - a.load) 
                     .slice(0, 10);
             }, [filteredData, activeTab]);
 
@@ -762,9 +787,9 @@
                     const hub = row.HUB || 'Unknown';
                     const load = cleanNumber(row[`LOAD ${activeTab}`]);
                     const prd = cleanNumber(row[`PRD ${activeTab} BY WH`]);
-                    const score = cleanNumber(row[activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`]);
+                    // Use helper for score
+                    const score = getScoreValue(row, activeTab);
 
-                    // Only count if there is load for this specific process
                     if (load > 0) {
                         if (!hubMap[hub]) {
                             hubMap[hub] = { name: hub, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
@@ -786,25 +811,24 @@
 
             const currentStats = useMemo(() => {
                 if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return {}; 
-                const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
                 return {
                     wh: getMetricTotal(filteredData, `WH ${activeTab}`),
                     load: getMetricTotal(filteredData, `LOAD ${activeTab}`),
                     prdWh: getMetricAvg(filteredData, `PRD ${activeTab} BY WH`),
                     prdAttend: getMetricAvg(filteredData, `PRD ${activeTab} BY ATTENDANCE`),
-                    scoring: getMetricTotal(filteredData, scoringKey) 
+                    // Calculate Total Score using Helper map
+                    scoring: filteredData.reduce((acc, curr) => acc + getScoreValue(curr, activeTab), 0)
                 };
             }, [filteredData, activeTab]);
 
             const previousStats = useMemo(() => {
                 if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return {};
-                const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
                 return {
                     wh: getMetricTotal(previousFilteredData, `WH ${activeTab}`),
                     load: getMetricTotal(previousFilteredData, `LOAD ${activeTab}`),
                     prdWh: getMetricAvg(previousFilteredData, `PRD ${activeTab} BY WH`),
                     prdAttend: getMetricAvg(previousFilteredData, `PRD ${activeTab} BY ATTENDANCE`),
-                    scoring: getMetricTotal(previousFilteredData, scoringKey)
+                    scoring: previousFilteredData.reduce((acc, curr) => acc + getScoreValue(curr, activeTab), 0)
                 };
             }, [previousFilteredData, activeTab]);
 
@@ -826,8 +850,8 @@
                 }).map(g => ({ ...g, avgPrd: g.count ? Math.round(g.prd / g.count) : 0 }));
             }, [filteredData, activeTab]);
 
-            const totalScoringSum = getMetricTotal(filteredData, "TOTAL SCORING");
-            const prevTotalScoringSum = getMetricTotal(previousFilteredData, "TOTAL SCORING");
+            const totalScoringSum = filteredData.reduce((acc, curr) => acc + getScoreValue(curr, 'TOTAL'), 0);
+            const prevTotalScoringSum = previousFilteredData.reduce((acc, curr) => acc + getScoreValue(curr, 'TOTAL'), 0);
             const totalScoringChange = calculateChange(totalScoringSum, prevTotalScoringSum);
 
             const hourlyStats = useMemo(() => {
@@ -847,7 +871,6 @@
                 });
                 const opCodeStats = OPCODE_GROUPS.map(group => {
                     const stats = group.codes.map(code => {
-                        // Use filteredHourlyData to aggregate OpCodes
                         const total = filteredHourlyData.reduce((acc, curr) => {
                             let val = 0;
                             if (curr[code] !== undefined) val = curr[code];
@@ -1167,13 +1190,19 @@
                                                         const loadVal = parseInt(cleanNumber(row[`LOAD ${activeTab}`])) || 0;
                                                         const prdWhVal = parseInt(cleanNumber(row[`PRD ${activeTab} BY WH`])) || 0;
                                                         const prdAttendVal = parseInt(cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`])) || 0;
+                                                        
                                                         if (scoreVal === 0 && whVal === 0 && loadVal === 0 && prdWhVal === 0 && prdAttendVal === 0) return null;
+
                                                         return (
                                                             <tr key={idx} className="hover:bg-blue-50/50 transition-colors duration-150">
                                                                 <td className="px-6 py-3 font-medium text-slate-600">{row.TANGGAL}</td>
                                                                 <td className="px-6 py-3 font-mono text-slate-400">{row.NIK}</td>
                                                                 <td className="px-6 py-3 font-medium text-slate-900">{row.NAME}</td>
-                                                                <td className="px-6 py-3 text-center"><span className={`px-2 py-0.5 rounded text-[10px] font-bold ${scoreVal >= 90 ? 'bg-emerald-100 text-emerald-700' : scoreVal >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>{scoreVal}</span></td>
+                                                                <td className="px-6 py-3 text-center">
+                                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${scoreVal >= 90 ? 'bg-emerald-100 text-emerald-700' : scoreVal >= 70 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                        {scoreVal}
+                                                                    </span>
+                                                                </td>
                                                                 <td className="px-6 py-3 text-right text-slate-600">{row[`WH ${activeTab}`] || 0}</td>
                                                                 <td className="px-6 py-3 text-right font-medium text-slate-900">{loadVal.toLocaleString()}</td>
                                                                 <td className="px-6 py-3 text-right font-bold text-blue-600">{prdWhVal.toLocaleString()}</td>
@@ -1188,17 +1217,25 @@
                                 </div>
                             </div>
                         )}
+
                         {activeTab === 'HOURLY' && hourlyStats ? (
                              <div className="space-y-6 animate-fade-in">
                                 <Card className="p-6 bg-white border border-slate-100 shadow-sm">
                                     <div className="flex justify-between items-center mb-6">
                                         <h3 className="font-bold text-slate-800 text-lg">Distribusi Load Per Jam</h3>
-                                        <span className="text-xs font-bold bg-teal-50 text-teal-700 px-3 py-1 rounded-full border border-teal-100">Total {filteredHourlyData.length} Data Points</span>
+                                        <span className="text-xs font-bold bg-teal-50 text-teal-700 px-3 py-1 rounded-full border border-teal-100">
+                                            Total {filteredHourlyData.length} Data Points
+                                        </span>
                                     </div>
                                     <div className="h-[350px]">
                                         <ResponsiveContainer width="100%" height="100%">
                                             <ComposedChart data={hourlyStats.chartData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
-                                                <defs><linearGradient id="colorLoadHourly" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0d9488" stopOpacity={0.2}/><stop offset="95%" stopColor="#0d9488" stopOpacity={0}/></linearGradient></defs>
+                                                <defs>
+                                                    <linearGradient id="colorLoadHourly" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor="#0d9488" stopOpacity={0.2}/>
+                                                        <stop offset="95%" stopColor="#0d9488" stopOpacity={0}/>
+                                                    </linearGradient>
+                                                </defs>
                                                 <XAxis dataKey="JAM" stroke="#94a3b8" tick={{fontSize: 10}} tickLine={false} axisLine={false} dy={10} />
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                                                 <Tooltip contentStyle={{borderRadius: '12px', border:'none', boxShadow:'0 4px 20px -2px rgb(0 0 0 / 0.1)'}} />
@@ -1209,6 +1246,7 @@
                                         </ResponsiveContainer>
                                     </div>
                                 </Card>
+
                                 <Card className="overflow-hidden border border-slate-100">
                                     <div className="p-4 border-b border-slate-50 bg-white"><h3 className="font-bold text-slate-800 text-sm uppercase">Matriks Heatmap</h3></div>
                                     <div className="overflow-x-auto">
@@ -1224,12 +1262,17 @@
                                                     <tr key={date} className="hover:bg-slate-50/50">
                                                         <td className="p-3 text-left font-medium text-slate-700 sticky left-0 bg-white z-10 border-r border-slate-50 shadow-sm">{date}</td>
                                                         {hourlyStats.hours.map(h => {
-                                                            const val = hourlyStats.pivotMap[date][h];
+                                                            const val = hourlyStats.pivotMap[date][h] || 0;
                                                             let bgClass = "text-slate-300";
                                                             if (val > 0) bgClass = "text-slate-600 font-medium bg-slate-50";
                                                             if (val > 500) bgClass = "text-teal-700 font-bold bg-teal-50";
                                                             if (val > 1000) bgClass = "text-emerald-700 font-bold bg-emerald-100";
-                                                            return <td key={`${date}-${h}`} className={`p-2 border-r border-slate-50 ${bgClass}`}>{(val || 0) > 0 ? (val || 0).toLocaleString() : '-'}</td>;
+                                                            
+                                                            return (
+                                                                <td key={`${date}-${h}`} className={`p-2 border-r border-slate-50 ${bgClass}`}>
+                                                                    {val > 0 ? val.toLocaleString() : '-'}
+                                                                </td>
+                                                            );
                                                         })}
                                                     </tr>
                                                 ))}
@@ -1237,34 +1280,42 @@
                                         </table>
                                     </div>
                                 </Card>
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {hourlyStats.opCodeStats.map((group, idx) => (
                                         <Card key={idx} className="overflow-hidden border border-slate-100 hover:shadow-lg transition-shadow"> 
                                             <div className={`p-4 border-b border-slate-50 ${group.color.split(' ')[0]} bg-opacity-10`}>
-                                                <h4 className="font-bold flex items-center gap-2 text-sm uppercase tracking-wide"><Icons.Layers size={14} /> {group.name}</h4>
+                                                <h4 className="font-bold flex items-center gap-2 text-sm uppercase tracking-wide">
+                                                    <Icons.Layers size={14} /> {group.name} Breakdown
+                                                </h4>
                                             </div>
-                                            <table className="w-full text-xs">
-                                                <tbody className="divide-y divide-slate-50">
-                                                    {group.stats.map((stat, sIdx) => (
-                                                        <tr key={sIdx} className="hover:bg-slate-50/80">
-                                                            <td className="px-4 py-2.5 text-slate-500 font-medium">{formatOpLabel(stat.code)}</td>
-                                                            <td className="px-4 py-2.5 text-right font-bold text-slate-800">{(stat.total || 0).toLocaleString()}</td>
+                                            <div className="p-0">
+                                                <table className="w-full text-sm">
+                                                    <tbody className="divide-y divide-slate-100">
+                                                        {group.stats.map((stat, sIdx) => (
+                                                            <tr key={sIdx} className="hover:bg-slate-50/80">
+                                                                <td className="px-4 py-2.5 text-slate-500 font-medium">{formatOpLabel(stat.code)}</td>
+                                                                <td className="px-4 py-2.5 text-right font-bold text-slate-800">{(stat.total || 0).toLocaleString()}</td>
+                                                            </tr>
+                                                        ))}
+                                                        <tr className="bg-slate-50/50">
+                                                            <td className="px-4 py-3 font-bold text-slate-700">Total</td>
+                                                            <td className="px-4 py-3 text-right font-bold text-slate-900 border-t border-slate-200">
+                                                                {(group.stats.reduce((a, b) => a + (b.total || 0), 0) || 0).toLocaleString()}
+                                                            </td>
                                                         </tr>
-                                                    ))}
-                                                    <tr className="bg-slate-50/50">
-                                                        <td className="px-4 py-3 font-bold text-slate-700">Total</td>
-                                                        <td className="px-4 py-3 text-right font-bold text-slate-900 border-t border-slate-200">{(group.stats.reduce((a, b) => a + (b.total || 0), 0) || 0).toLocaleString()}</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
+                                                    </tbody>
+                                                </table>
+                                            </div>
                                         </Card>
                                     ))}
                                 </div>
                             </div>
                         ) : null}
+
                         {activeTab === 'ANALYSIS' && analysisStats ? (
                             <div className="space-y-6 animate-fade-in">
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 gap-6">
                                     <Card className="overflow-hidden border border-indigo-100 shadow-sm bg-white h-full flex flex-col">
                                         <div className="p-5 border-b border-indigo-50 bg-indigo-50/30 flex justify-between items-center">
                                             <h3 className="font-bold text-indigo-900 flex items-center gap-2"><Icons.Star size={18} className="text-amber-400" /> Top 10 Sorter (Rincian Performa)</h3>
@@ -1398,12 +1449,7 @@
                                                 <tbody className="divide-y divide-slate-50">
                                                     {analysisStats.bottomPerformers.map((p, idx) => (
                                                         <tr key={idx} className="hover:bg-rose-50/30 transition-colors">
-                                                            <td className="px-5 py-3 font-medium text-slate-700">
-                                                                <div className="flex flex-col">
-                                                                    <span>{p.name}</span>
-                                                                    <span className="text-[9px] text-slate-400 font-normal">{p.hub}</span>
-                                                                </div>
-                                                            </td>
+                                                            <td className="px-5 py-3 font-medium text-slate-700">{p.name}</td>
                                                             <td className="px-5 py-3 text-right font-bold text-rose-600">{p.avgScore}</td>
                                                             <td className="px-5 py-3 text-right text-slate-500">{p.avgLoad}</td>
                                                             <td className="px-5 py-3"><span className="text-[10px] font-bold text-rose-500 bg-rose-50 px-2 py-1 rounded">Evaluasi</span></td>
