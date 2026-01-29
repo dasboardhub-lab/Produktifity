@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
+    <title>Dashboard Produktivitas</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -683,36 +683,61 @@
 
             const analysisStats = useMemo(() => {
                 if (activeTab !== 'ANALYSIS' || filteredData.length === 0) return null;
+
                 const employeeMap = {};
                 filteredData.forEach(item => {
                     const nik = item.NIK;
                     if (!nik || !item.NAME) return;
+                    
                     if (!employeeMap[nik]) {
-                        employeeMap[nik] = { nik: nik, name: item.NAME, hub: item.HUB, totalLoad: 0, totalScore: 0, totalWH: 0, count: 0 };
+                        employeeMap[nik] = { 
+                            nik: nik,
+                            name: item.NAME, 
+                            hub: item.HUB, 
+                            totalLoad: 0, 
+                            totalScore: 0, 
+                            totalWH: 0, 
+                            count: 0 
+                        };
                     }
+                    
                     let load = cleanNumber(item['LOAD TOTAL']);
                     if (load === 0) load = cleanNumber(item['LOAD INBOUND']) + cleanNumber(item['LOAD OUTBOUND']); 
+                    
                     let wh = cleanNumber(item['WH TOTAL']);
                     if (wh === 0) wh = cleanNumber(item['WH INBOUND']) + cleanNumber(item['WH OUTBOUND']);
+
                     const score = getScoreValue(item, 'TOTAL') || 0; 
+                    
                     employeeMap[nik].totalLoad += load;
                     employeeMap[nik].totalWH += wh;
                     employeeMap[nik].totalScore += score;
                     employeeMap[nik].count += 1;
                 });
+
+                // Find Peak Hourly Load per user
                 const hourlyPeaks = {};
                 filteredHourlyData.forEach(item => {
                      const nik = String(item.NIK).trim();
                      if (!nik || nik === 'GENERAL') return;
+
                      if (!hourlyPeaks[nik]) hourlyPeaks[nik] = 0;
                      const load = cleanNumber(item.LOAD);
-                     if (load > hourlyPeaks[nik]) hourlyPeaks[nik] = load;
+                     if (load > hourlyPeaks[nik]) {
+                         hourlyPeaks[nik] = load;
+                     }
                 });
+
+                // Group Hourly Data by NIK to find Favorite OpCode
                 const hourlyOpMap = {};
                 filteredHourlyData.forEach(item => {
                     const nik = String(item.NIK).trim();
                     if (!nik || nik === 'GENERAL') return;
-                    if (!hourlyOpMap[nik]) hourlyOpMap[nik] = { 'Inbound': 0, 'Outbound': 0, 'Prim/Sec': 0, 'Console': 0, 'Other': 0 };
+
+                    if (!hourlyOpMap[nik]) {
+                        hourlyOpMap[nik] = { 'Inbound': 0, 'Outbound': 0, 'Prim/Sec': 0, 'Console': 0, 'Other': 0 };
+                    }
+                    
                     OPCODE_GROUPS.forEach(group => {
                         let groupSum = 0;
                         group.codes.forEach(code => {
@@ -722,38 +747,83 @@
                         hourlyOpMap[nik][group.name] += groupSum;
                     });
                 });
+
                 const employees = Object.values(employeeMap).map(e => {
                     const avgScore = e.count ? (e.totalScore / e.count).toFixed(1) : 0;
                     const avgLoad = e.count ? Math.round(e.totalLoad / e.count) : 0;
                     const speed = e.totalWH > 0 ? Math.round(e.totalLoad / e.totalWH) : 0;
                     const peakLoad = hourlyPeaks[e.nik] || 0;
+                    
+                    // Determine Specialty
                     const ops = hourlyOpMap[e.nik];
                     let specialty = "General";
                     if (ops) {
                         const maxOp = Object.keys(ops).reduce((a, b) => ops[a] > ops[b] ? a : b);
                         if (ops[maxOp] > 0) specialty = maxOp;
                     }
+
                     return { ...e, avgScore, avgLoad, speed, peakLoad, specialty };
                 }).filter(e => e.avgLoad > 0);
+
+                // Calculate Global Averages for Benchmarking
                 const globalAvgLoad = employees.length ? (employees.reduce((acc, e) => acc + e.avgLoad, 0) / employees.length) : 0;
                 const globalAvgScore = employees.length ? (employees.reduce((acc, e) => acc + parseFloat(e.avgScore), 0) / employees.length) : 0;
                 const globalAvgSpeed = employees.length ? (employees.reduce((acc, e) => acc + e.speed, 0) / employees.length) : 0;
-                const top10Sorters = [...employees].sort((a, b) => {
-                    const scoreA = parseFloat(a.avgScore);
-                    const scoreB = parseFloat(b.avgScore);
-                    if (scoreB !== scoreA) return scoreB - scoreA;
-                    return b.avgLoad - a.avgLoad;
-                }).slice(0, 10).map((p) => {
-                        let reason = "Solid Performer"; let type = "Standard"; let color = "bg-gray-100 text-gray-700 border-gray-200";
-                        const score = parseFloat(p.avgScore); const load = p.avgLoad; const speed = p.speed; const peak = p.peakLoad;
-                        if (score >= 98 && peak > globalAvgSpeed * 2) { reason = `💎 MVP: Akurasi Tinggi & Tahan Peak (${peak} pcs/jam)`; color = "bg-purple-100 text-purple-700 border-purple-200"; }
-                        else if (score >= 99) { reason = "🎯 Quality Master (Zero Error)"; color = "bg-emerald-100 text-emerald-700 border-emerald-200"; }
-                        else if (peak > globalAvgSpeed * 2.5) { reason = `🚀 Sprinter: Rekor Load ${peak.toLocaleString()} pcs/jam`; color = "bg-amber-100 text-amber-700 border-amber-200"; }
-                        else if (speed > globalAvgSpeed * 1.5) { reason = "⚡ Speed Demon (Rata-rata Cepat)"; color = "bg-orange-100 text-orange-700 border-orange-200"; }
-                        else if (load > globalAvgLoad * 1.5) { reason = "🐎 Workhorse (Volume Harian Tinggi)"; color = "bg-blue-100 text-blue-700 border-blue-200"; }
-                        else if (score >= 95) { reason = "⭐ High Quality & Consistent"; color = "bg-indigo-100 text-indigo-700 border-indigo-200"; }
+                const globalAvgWH = employees.length ? (employees.reduce((acc, e) => acc + e.totalWH, 0) / employees.length) : 0;
+
+                const top10Sorters = [...employees]
+                    .sort((a, b) => {
+                        const scoreA = parseFloat(a.avgScore);
+                        const scoreB = parseFloat(b.avgScore);
+                        if (scoreB !== scoreA) return scoreB - scoreA;
+                        return b.avgLoad - a.avgLoad;
+                    })
+                    .slice(0, 10)
+                    .map((p) => {
+                        let reason = "Performa Stabil";
+                        let color = "bg-gray-100 text-gray-700 border-gray-200";
+                        
+                        const score = parseFloat(p.avgScore);
+                        const load = p.avgLoad;
+                        const speed = p.speed;
+                        const wh = p.totalWH;
+
+                        // Benchmarking Logic
+                        const isHighQual = score >= 98;
+                        const isHighVol = load > globalAvgLoad * 1.2;
+                        const isFast = speed > globalAvgSpeed * 1.2;
+                        const isLongHours = wh > globalAvgWH * 1.2;
+
+                        // Generate Analytical Reason
+                        const strengths = [];
+                        if (isHighQual) strengths.push("Akurasi");
+                        if (isHighVol) strengths.push("Volume");
+                        if (isFast) strengths.push("Speed");
+                        if (isLongHours) strengths.push("Durasi");
+
+                        if (isHighQual && isHighVol && isFast) {
+                            reason = `💎 MVP: Sempurna di Kualitas, Volume & Kecepatan`;
+                            color = "bg-purple-100 text-purple-700 border-purple-200";
+                        } else if (isHighQual && isHighVol) {
+                            reason = `🔥 Star: Volume Tinggi (${load.toLocaleString()}) dengan Akurasi Terjaga`;
+                            color = "bg-indigo-100 text-indigo-700 border-indigo-200";
+                        } else if (isHighVol && isFast) {
+                            reason = `⚡ Mesin: Sangat Cepat (${speed}/jam) & Volume Besar`;
+                            color = "bg-blue-100 text-blue-700 border-blue-200";
+                        } else if (isHighQual) {
+                            reason = `🎯 Teliti: Skor Kualitas ${score} di atas rata-rata`;
+                            color = "bg-emerald-100 text-emerald-700 border-emerald-200";
+                        } else if (isLongHours && isHighVol) {
+                            reason = `🐎 Tangguh: Durasi Panjang (${wh.toFixed(1)} Jam) & Volume Tinggi`;
+                            color = "bg-orange-100 text-orange-700 border-orange-200";
+                        } else if (strengths.length > 0) {
+                            reason = `✨ Unggul di: ${strengths.join(", ")}`;
+                            color = "bg-teal-100 text-teal-700 border-teal-200";
+                        }
+
                         return { ...p, reason, badgeColor: color };
                     });
+
                 const bottomPerformers = [...employees].sort((a, b) => parseFloat(a.avgScore) - parseFloat(b.avgScore)).slice(0, 5);
                 return { employees, globalAvgLoad, globalAvgScore, top10Sorters, bottomPerformers };
             }, [filteredData, filteredHourlyData, activeTab]);
