@@ -1178,6 +1178,7 @@
                                                         <th className="px-6 py-4 text-center">Score</th>
                                                         <th className="px-6 py-4 text-right">WH</th>
                                                         <th className="px-6 py-4 text-right">Load</th>
+                                                        <th className="px-6 py-4 text-right">Target</th>
                                                         <th className="px-6 py-4 text-right">Prd/Wh</th>
                                                         <th className="px-6 py-4 text-right">Prd/Att</th>
                                                     </tr>
@@ -1191,6 +1192,16 @@
                                                         const prdWhVal = parseInt(cleanNumber(row[`PRD ${activeTab} BY WH`])) || 0;
                                                         const prdAttendVal = parseInt(cleanNumber(row[`PRD ${activeTab} BY ATTENDANCE`])) || 0;
                                                         
+                                                        // --- LOGIKA WARNA BERDASARKAN TARGET ---
+                                                        // 1. Tentukan nama kolom target berdasarkan tab aktif
+                                                        const targetColumn = activeTab; // Misal "INBOUND", "OUTBOUND", "PRIM/SEC"
+                                                        // 2. Ambil nilai target dari baris data
+                                                        const targetVal = parseInt(cleanNumber(row[targetColumn])) || 0;
+
+                                                        // 3. Tentukan warna
+                                                        const prdWhColor = prdWhVal >= targetVal ? 'text-emerald-600' : 'text-rose-600';
+                                                        const prdAttendColor = prdAttendVal >= targetVal ? 'text-emerald-600' : 'text-rose-600';
+
                                                         if (scoreVal === 0 && whVal === 0 && loadVal === 0 && prdWhVal === 0 && prdAttendVal === 0) return null;
 
                                                         return (
@@ -1205,8 +1216,19 @@
                                                                 </td>
                                                                 <td className="px-6 py-3 text-right text-slate-600">{row[`WH ${activeTab}`] || 0}</td>
                                                                 <td className="px-6 py-3 text-right font-medium text-slate-900">{loadVal.toLocaleString()}</td>
-                                                                <td className="px-6 py-3 text-right font-bold text-blue-600">{prdWhVal.toLocaleString()}</td>
-                                                                <td className="px-6 py-3 text-right font-bold text-indigo-600">{prdAttendVal.toLocaleString()}</td>
+                                                                
+                                                                {/* Kolom Target (Baru) untuk referensi */}
+                                                                <td className="px-6 py-3 text-right text-slate-400 text-[10px]">{targetVal > 0 ? targetVal.toLocaleString() : '-'}</td>
+
+                                                                {/* Prd/Wh dengan Warna Dinamis */}
+                                                                <td className={`px-6 py-3 text-right font-bold ${prdWhColor}`}>
+                                                                    {prdWhVal.toLocaleString()}
+                                                                </td>
+
+                                                                {/* Prd/Att dengan Warna Dinamis */}
+                                                                <td className={`px-6 py-3 text-right font-bold ${prdAttendColor}`}>
+                                                                    {prdAttendVal.toLocaleString()}
+                                                                </td>
                                                             </tr>
                                                         );
                                                     })}
