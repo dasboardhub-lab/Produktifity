@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Produktivitas 2025 (Live Data: logsheet-5r)</title>
+    <title>Dashboard Produktivitas 2025</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -116,6 +116,7 @@
             AlertTriangle: (props) => <Icon {...props} path={<><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></>} />,
             TrendUp: (props) => <Icon {...props} path={<><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></>} />,
             TrendDown: (props) => <Icon {...props} path={<><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline><polyline points="17 18 23 18 23 12"></polyline></>} />,
+            Home: (props) => <Icon {...props} path={<><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></>} />,
         };
 
         // --- GLOBAL HELPERS ---
@@ -719,6 +720,70 @@
                 return { employees, globalAvgLoad, globalAvgScore, top10Sorters, bottomPerformers };
             }, [filteredData, filteredHourlyData, activeTab]);
 
+            // --- NEW HELPERS FOR TOP 10 & HUB SUMMARY PER TAB ---
+            const topSortersCurrentTab = useMemo(() => {
+                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return [];
+                const sorterMap = {};
+                filteredData.forEach(row => {
+                    if (!row.NIK) return;
+                    // Use dynamic keys based on activeTab
+                    const loadKey = `LOAD ${activeTab}`;
+                    const prdKey = `PRD ${activeTab} BY WH`;
+                    const scoreKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
+
+                    const load = cleanNumber(row[loadKey]);
+                    const prd = cleanNumber(row[prdKey]);
+                    const score = cleanNumber(row[scoreKey]);
+
+                    if (load > 0 || prd > 0) { // Only count if there is activity
+                         if (!sorterMap[row.NIK]) {
+                            sorterMap[row.NIK] = { name: row.NAME, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
+                        }
+                        sorterMap[row.NIK].load += load;
+                        sorterMap[row.NIK].prdSum += prd;
+                        sorterMap[row.NIK].scoreSum += score;
+                        sorterMap[row.NIK].count += 1;
+                    }
+                });
+                return Object.values(sorterMap)
+                    .map(s => ({ 
+                        ...s, 
+                        avgPrd: s.count ? Math.round(s.prdSum / s.count) : 0,
+                        avgScore: s.count ? (s.scoreSum / s.count).toFixed(1) : 0 
+                    }))
+                    .sort((a, b) => b.load - a.load) // Sort by Volume High to Low
+                    .slice(0, 10);
+            }, [filteredData, activeTab]);
+
+            const hubSummaryCurrentTab = useMemo(() => {
+                if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return [];
+                const hubMap = {};
+                filteredData.forEach(row => {
+                    const hub = row.HUB || 'Unknown';
+                    const load = cleanNumber(row[`LOAD ${activeTab}`]);
+                    const prd = cleanNumber(row[`PRD ${activeTab} BY WH`]);
+                    const score = cleanNumber(row[activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`]);
+
+                    // Only count if there is load for this specific process
+                    if (load > 0) {
+                        if (!hubMap[hub]) {
+                            hubMap[hub] = { name: hub, load: 0, prdSum: 0, scoreSum: 0, count: 0 };
+                        }
+                        hubMap[hub].load += load;
+                        hubMap[hub].prdSum += prd;
+                        hubMap[hub].scoreSum += score;
+                        hubMap[hub].count += 1;
+                    }
+                });
+                return Object.values(hubMap)
+                    .map(h => ({
+                        ...h,
+                        avgPrd: h.count ? Math.round(h.prdSum / h.count) : 0,
+                        avgScore: h.count ? (h.scoreSum / h.count).toFixed(1) : 0
+                    }))
+                    .sort((a, b) => b.load - a.load);
+            }, [filteredData, activeTab]);
+
             const currentStats = useMemo(() => {
                 if (activeTab === 'ANALYSIS' || activeTab === 'HOURLY') return {}; 
                 const scoringKey = activeTab === 'PRIM/SEC' ? 'SCORING PRIM/SECOND' : `SCORING ${activeTab}`;
@@ -955,32 +1020,108 @@
                                         <StatCard title={`PRD ${activeTab} / WH`} value={currentStats.prdWh} sub="/ Jam" icon={Icons.Zap} colorClass="bg-amber-500 text-white" change={calculateChange(currentStats.prdWh, previousStats.prdWh)} isPositive={calculateChange(currentStats.prdWh, previousStats.prdWh) >= 0} />
                                         <StatCard title={`PRD ${activeTab} / ATT`} value={currentStats.prdAttend} sub="/ Orang" icon={Icons.Award} colorClass="bg-violet-600 text-white" change={calculateChange(currentStats.prdAttend, previousStats.prdAttend)} isPositive={calculateChange(currentStats.prdAttend, previousStats.prdAttend) >= 0} />
                                     </div>
-                                    <Card className="lg:col-span-4 p-6 bg-white border border-slate-100 shadow-sm">
-                                        <div className="flex items-center justify-between mb-8">
-                                            <h3 className="font-bold text-slate-800 text-lg">Analisa Tren Harian</h3>
-                                            <div className="flex gap-4 text-xs font-medium">
-                                                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Produktivitas</div>
-                                                <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Volume Load</div>
+                                    
+                                    {/* GRID UTAMA: CHART + TOP 10 */}
+                                    <div className="lg:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                        {/* Chart - Takes 2 cols */}
+                                        <Card className="lg:col-span-2 p-6 bg-white border border-slate-100 shadow-sm">
+                                            <div className="flex items-center justify-between mb-8">
+                                                <h3 className="font-bold text-slate-800 text-lg">Analisa Tren Harian</h3>
+                                                <div className="flex gap-4 text-xs font-medium">
+                                                    <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> Produktivitas</div>
+                                                    <div className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400"></span> Volume Load</div>
+                                                </div>
                                             </div>
-                                        </div>
-                                        <div className="h-[320px]">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <ComposedChart data={chartData}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                                    <XAxis dataKey="date" style={{fontSize: '11px', fontFamily: 'Inter'}} stroke="#94a3b8" tickLine={false} axisLine={false} dy={10} />
-                                                    <YAxis yAxisId="left" orientation="left" hide={true} />
-                                                    <YAxis yAxisId="right" orientation="right" hide={true} />
-                                                    <Tooltip contentStyle={{borderRadius: '12px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}} cursor={{stroke: '#e2e8f0', strokeWidth: 1}} />
-                                                    <Bar yAxisId="right" dataKey="load" name="Volume Load" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20}>
-                                                        <LabelList dataKey="load" position="top" style={{ fill: '#10b981', fontSize: '10px', fontWeight: 'bold' }} />
-                                                    </Bar>
-                                                    <Line yAxisId="left" type="monotone" dataKey="avgPrd" name="Produktivitas" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#fff', strokeWidth:2, stroke:'#3b82f6'}} activeDot={{r: 6}}>
-                                                        <LabelList dataKey="avgPrd" position="top" offset={10} style={{ fill: '#3b82f6', fontSize: '10px', fontWeight: 'bold' }} />
-                                                    </Line>
-                                                </ComposedChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                    </Card>
+                                            <div className="h-[320px]">
+                                                <ResponsiveContainer width="100%" height="100%">
+                                                    <ComposedChart data={chartData}>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                        <XAxis dataKey="date" style={{fontSize: '11px', fontFamily: 'Inter'}} stroke="#94a3b8" tickLine={false} axisLine={false} dy={10} />
+                                                        <YAxis yAxisId="left" orientation="left" hide={true} />
+                                                        <YAxis yAxisId="right" orientation="right" hide={true} />
+                                                        <Tooltip contentStyle={{borderRadius: '12px', border:'none', boxShadow:'0 10px 15px -3px rgb(0 0 0 / 0.1)', padding: '12px'}} cursor={{stroke: '#e2e8f0', strokeWidth: 1}} />
+                                                        <Bar yAxisId="right" dataKey="load" name="Volume Load" fill="#10b981" radius={[4, 4, 0, 0]} barSize={20}>
+                                                            <LabelList dataKey="load" position="top" style={{ fill: '#10b981', fontSize: '10px', fontWeight: 'bold' }} />
+                                                        </Bar>
+                                                        <Line yAxisId="left" type="monotone" dataKey="avgPrd" name="Produktivitas" stroke="#3b82f6" strokeWidth={3} dot={{r:4, fill:'#fff', strokeWidth:2, stroke:'#3b82f6'}} activeDot={{r: 6}}>
+                                                            <LabelList dataKey="avgPrd" position="top" offset={10} style={{ fill: '#3b82f6', fontSize: '10px', fontWeight: 'bold' }} />
+                                                        </Line>
+                                                    </ComposedChart>
+                                                </ResponsiveContainer>
+                                            </div>
+                                        </Card>
+
+                                        {/* Top 10 Sorter - Takes 1 col */}
+                                        <Card className="lg:col-span-1 overflow-hidden border border-indigo-100 bg-white flex flex-col h-full">
+                                            <div className="p-4 border-b border-indigo-50 bg-indigo-50/20 flex justify-between items-center">
+                                                <h3 className="font-bold text-slate-800 text-sm uppercase flex items-center gap-2">
+                                                    <Icons.Star size={16} className="text-amber-400" /> Top 10 {activeTab}
+                                                </h3>
+                                            </div>
+                                            <div className="overflow-auto flex-1 max-h-[320px]">
+                                                <table className="w-full text-xs text-left">
+                                                    <thead className="text-slate-400 bg-slate-50 uppercase tracking-wider font-semibold sticky top-0 z-10">
+                                                        <tr>
+                                                            <th className="px-4 py-2 w-8 text-center">#</th>
+                                                            <th className="px-4 py-2">Nama</th>
+                                                            <th className="px-4 py-2 text-right">Load</th>
+                                                            <th className="px-4 py-2 text-right">Prd</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-50">
+                                                        {topSortersCurrentTab.length > 0 ? topSortersCurrentTab.map((s, idx) => (
+                                                            <tr key={idx} className="hover:bg-indigo-50/30">
+                                                                <td className="px-4 py-2 text-center font-bold text-slate-300">{idx + 1}</td>
+                                                                <td className="px-4 py-2 font-medium text-slate-700 truncate max-w-[120px]">{s.name}</td>
+                                                                <td className="px-4 py-2 text-right font-bold text-emerald-600">{s.load.toLocaleString()}</td>
+                                                                <td className="px-4 py-2 text-right font-medium text-indigo-600">{s.avgPrd}</td>
+                                                            </tr>
+                                                        )) : (
+                                                            <tr><td colSpan="4" className="p-8 text-center text-slate-400 italic">Belum ada data</td></tr>
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </Card>
+                                    </div>
+
+                                    {/* HUB Summary */}
+                                    <div className="lg:col-span-4">
+                                        <Card className="overflow-hidden border border-slate-100 bg-white">
+                                            <div className="p-4 border-b border-slate-50 bg-slate-50/50">
+                                                <h3 className="font-bold text-slate-800 text-sm uppercase">Rekapan Performa HUB: {activeTab}</h3>
+                                            </div>
+                                            <div className="overflow-x-auto">
+                                                <div className="flex p-4 gap-4 min-w-max">
+                                                    {hubSummaryCurrentTab.map((hub, idx) => (
+                                                        <div key={idx} className="flex-none w-48 bg-white border border-slate-100 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                                                            <div className="flex justify-between items-start mb-3">
+                                                                <span className="font-bold text-slate-800 text-sm">{hub.name}</span>
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${parseFloat(hub.avgScore) >= 90 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                    {hub.avgScore}
+                                                                </span>
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <div className="flex justify-between text-xs">
+                                                                    <span className="text-slate-400">Total Load</span>
+                                                                    <span className="font-bold text-slate-700">{hub.load.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="w-full bg-slate-100 rounded-full h-1.5">
+                                                                    <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: '100%' }}></div>
+                                                                </div>
+                                                                <div className="flex justify-between text-xs pt-1">
+                                                                    <span className="text-slate-400">Avg Prd</span>
+                                                                    <span className="font-bold text-indigo-600">{hub.avgPrd} <span className="text-[9px] font-normal text-slate-400">/hr</span></span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    {hubSummaryCurrentTab.length === 0 && <div className="text-slate-400 italic text-sm p-2">Tidak ada data HUB</div>}
+                                                </div>
+                                            </div>
+                                        </Card>
+                                    </div>
+
                                     <Card className="lg:col-span-4 overflow-hidden border border-slate-100 bg-white">
                                         <div className="p-5 border-b border-slate-50 flex justify-between items-center bg-white sticky top-0 z-10">
                                             <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide">Detail Data: {activeTab}</h3>
