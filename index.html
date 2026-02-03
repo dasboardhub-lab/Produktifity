@@ -860,11 +860,16 @@
                 const categoryStr = analysisFilter === 'ALL' ? 'General' : analysisFilter;
                 const hubStr = filterHub === 'All' ? 'Semua HUB' : filterHub;
                 
+                // --- LOGIC BARU: Jika Filter HUB aktif, tampilkan Top 10. Jika All HUB, hanya Top 3. ---
+                const isSpecificHub = filterHub !== 'All';
+                const limitTop = isSpecificHub ? 10 : 3;
+                const titleTop = isSpecificHub ? `TOP 10 PERFORMERS - ${hubStr.toUpperCase()}` : "TOP 3 TALENT (HIGHLIGHT)";
+
                 // Helper untuk padding text agar rata kolom
                 const pad = (str, len) => str.toString().padEnd(len);
 
-                // --- UPDATE: Format Top 3 (Tabel Rapi dengan Monospace Block untuk WA) ---
-                const top3 = analysisStats.top10Sorters.slice(0, 3).map((p, i) => 
+                // --- UPDATE: Format Top X (Tabel Rapi dengan Monospace Block untuk WA) ---
+                const top3 = analysisStats.top10Sorters.slice(0, limitTop).map((p, i) => 
 `🥇 *Rank #${i+1}: ${p.name}* (${p.hub || '-'})
 \`\`\`
 Metric     | Total      | Avg
@@ -895,7 +900,7 @@ Metric     | Total      | Avg
 • Avg Skor  : ${avgScoreStr}
 • Total Tim : ${analysisStats.employees.length} orang
 
-🏆 *TOP 3 TALENT (HIGHLIGHT):*
+🏆 *${titleTop}:*
 ----------------------------------------
 ${top3}
 ----------------------------------------
